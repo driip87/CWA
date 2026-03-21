@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function AdminCustomers() {
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,7 +33,7 @@ export default function AdminCustomers() {
 
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCustomer || !noteContent.trim() || !user) return;
+    if (!selectedCustomer || !noteContent.trim() || !user || !userData) return;
     
     try {
       await addDoc(collection(db, 'interactions'), {
@@ -41,7 +41,7 @@ export default function AdminCustomers() {
         type: 'note',
         content: noteContent,
         date: new Date().toISOString(),
-        authorId: user.uid
+        authorId: userData.id
       });
       setNoteContent('');
       alert('Note added successfully');
@@ -80,6 +80,11 @@ export default function AdminCustomers() {
     }
   };
 
+  const handleResendInvite = (customer: any) => {
+    const claimLink = `${window.location.origin}/?claim=${customer.claimToken}&email=${encodeURIComponent(customer.email)}`;
+    alert(`Invite link generated for ${customer.email}:\n\n${claimLink}\n\n(In a production environment, this would be emailed automatically)`);
+  };
+
   const filteredCustomers = customers.filter(c => 
     c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     c.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -112,6 +117,7 @@ export default function AdminCustomers() {
                 <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Contact</th>
                 <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Address</th>
                 <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Joined</th>
+                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Status</th>
                 <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50 text-right">Actions</th>
               </tr>
             </thead>
@@ -152,15 +158,40 @@ export default function AdminCustomers() {
                   <td className="px-6 py-4 text-sm text-[#141414]/70 font-mono">
                     {format(new Date(customer.createdAt), 'MMM d, yyyy')}
                   </td>
+                  <td className="px-6 py-4">
+                    {customer.status === 'staged' ? (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Pending Claim
+                      </span>
+                    ) : (
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                        customer.subscriptionStatus === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {customer.subscriptionStatus === 'active' ? 'Active' : 'Claimed'}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-right">
-                    <button className="p-2 text-[#141414]/40 hover:text-[#141414] hover:bg-[#141414]/5 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
-                      <Edit size={18} />
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      {customer.status === 'staged' && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleResendInvite(customer); }}
+                          className="text-[#6b8e6b] hover:text-[#5a7a5a] font-medium text-xs px-2 py-1 rounded border border-[#6b8e6b]/30 hover:bg-[#6b8e6b]/10 transition-colors"
+                        >
+                          Resend Invite
+                        </button>
+                      )}
+                      <button className="p-2 text-[#141414]/40 hover:text-[#141414] hover:bg-[#141414]/5 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                        <Edit size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-[#141414]/50 font-mono">
+                  <td colSpan={6} className="px-6 py-8 text-center text-[#141414]/50 font-mono">
                     No customers found.
                   </td>
                 </tr>

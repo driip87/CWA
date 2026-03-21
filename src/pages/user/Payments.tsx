@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
 
 export default function UserPayments() {
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [balance, setBalance] = useState(0);
@@ -15,7 +15,7 @@ export default function UserPayments() {
 
   useEffect(() => {
     const fetchPayments = async () => {
-      if (!user) return;
+      if (!user || !userData) return;
       try {
         // Handle Stripe success callback
         const paymentSuccess = searchParams.get('payment_success');
@@ -28,7 +28,7 @@ export default function UserPayments() {
         }
 
         const paymentsRef = collection(db, 'payments');
-        const qPayments = query(paymentsRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+        const qPayments = query(paymentsRef, where('userId', '==', userData.id), orderBy('date', 'desc'));
         const paymentsSnap = await getDocs(qPayments);
         const allPayments = paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
         
@@ -47,13 +47,13 @@ export default function UserPayments() {
     };
 
     fetchPayments();
-  }, [user]);
+  }, [user, userData]);
 
   const handlePayBalance = async () => {
-    if (!user || balance <= 0) return;
+    if (!user || !userData || balance <= 0) return;
     try {
       const paymentRef = await addDoc(collection(db, 'payments'), {
-        userId: user.uid,
+        userId: userData.id,
         amount: balance,
         status: 'pending',
         date: new Date().toISOString(),
@@ -68,7 +68,7 @@ export default function UserPayments() {
         body: JSON.stringify({
           amount: balance,
           description: 'Cordova Waste Balance Payment',
-          userId: user.uid,
+          userId: userData.id,
           paymentId: paymentRef.id,
           returnUrl: window.location.origin + '/dashboard/payments'
         }),

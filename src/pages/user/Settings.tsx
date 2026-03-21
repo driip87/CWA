@@ -14,12 +14,12 @@ export default function UserSettings() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !userData) return;
 
     setSaving(true);
     setMessage('');
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      await updateDoc(doc(db, 'users', userData.id), {
         name,
         phone,
         address

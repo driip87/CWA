@@ -18,7 +18,7 @@ const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const handleRestoreAdmin = async () => {
     if (!userData) return;
     try {
-      await updateDoc(doc(db, 'users', userData.uid), {
+      await updateDoc(doc(db, 'users', userData.id), {
         role: 'admin',
         subscriptionStatus: 'active'
       });

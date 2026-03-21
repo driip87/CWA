@@ -6,16 +6,16 @@ import { Calendar, CheckCircle2, AlertCircle, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function UserPickups() {
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const [pickups, setPickups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchPickups = async () => {
-      if (!user) return;
+      if (!user || !userData) return;
       try {
         const pickupsRef = collection(db, 'pickups');
-        const qPickups = query(pickupsRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+        const qPickups = query(pickupsRef, where('userId', '==', userData.id), orderBy('date', 'desc'));
         const pickupsSnap = await getDocs(qPickups);
         setPickups(pickupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       } catch (error) {
@@ -26,7 +26,7 @@ export default function UserPickups() {
     };
 
     fetchPickups();
-  }, [user]);
+  }, [user, userData]);
 
   if (loading) return <div className="text-gray-500">Loading pickups...</div>;
 

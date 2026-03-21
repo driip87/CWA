@@ -21,12 +21,12 @@ export default function Subscribe() {
         setProcessingSuccess(true);
         try {
           // Update user status
-          await updateDoc(doc(db, 'users', user.uid), { subscriptionStatus: 'active' });
+          await updateDoc(doc(db, 'users', userData.id), { subscriptionStatus: 'active' });
           
           // Record the payment in the payments collection
           if (amount > 0) {
             await addDoc(collection(db, 'payments'), {
-              userId: user.uid,
+              userId: userData.id,
               amount: amount,
               status: 'paid',
               date: new Date().toISOString(),
@@ -39,7 +39,7 @@ export default function Subscribe() {
           nextPickupDate.setDate(nextPickupDate.getDate() + 3);
           
           await addDoc(collection(db, 'pickups'), {
-            userId: user.uid,
+            userId: userData.id,
             date: nextPickupDate.toISOString(),
             status: 'scheduled',
             binLocation: 'Curbside',
@@ -57,7 +57,7 @@ export default function Subscribe() {
   }, [searchParams, user, processingSuccess]);
 
   const handleSubscribe = async (planName: string, amount: number) => {
-    if (!user) return;
+    if (!user || !userData) return;
     setLoading(true);
     try {
       const response = await fetch('/api/create-subscription-session', {
@@ -66,7 +66,7 @@ export default function Subscribe() {
         body: JSON.stringify({
           planName,
           amount,
-          userId: user.uid,
+          userId: userData.id,
           returnUrl: window.location.origin + `/subscribe?plan=${encodeURIComponent(planName)}&amount=${amount}`
         }),
       });
@@ -85,9 +85,9 @@ export default function Subscribe() {
   };
 
   const handleRestoreAdmin = async () => {
-    if (!user) return;
+    if (!user || !userData) return;
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      await updateDoc(doc(db, 'users', userData.id), {
         role: 'admin',
         subscriptionStatus: 'active'
       });

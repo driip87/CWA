@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const [stats, setStats] = useState({
     totalCustomers: 0,
     activePickups: 0,
@@ -93,9 +93,9 @@ export default function AdminDashboard() {
   };
 
   const handleTestUserFlow = async () => {
-    if (!user) return;
+    if (!user || !userData) return;
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      await updateDoc(doc(db, 'users', userData.id), {
         role: 'user',
         subscriptionStatus: 'inactive'
       });

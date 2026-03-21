@@ -19,7 +19,7 @@ export default function UserDashboard() {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!user) return;
+      if (!user || !userData) return;
       try {
         // Handle Stripe success callback
         const paymentSuccess = searchParams.get('payment_success');
@@ -32,12 +32,12 @@ export default function UserDashboard() {
         }
 
         const pickupsRef = collection(db, 'pickups');
-        const qPickups = query(pickupsRef, where('userId', '==', user.uid), orderBy('date', 'desc'), limit(3));
+        const qPickups = query(pickupsRef, where('userId', '==', userData.id), orderBy('date', 'desc'), limit(3));
         const pickupsSnap = await getDocs(qPickups);
         setRecentPickups(pickupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
         const paymentsRef = collection(db, 'payments');
-        const qPayments = query(paymentsRef, where('userId', '==', user.uid), orderBy('date', 'desc'));
+        const qPayments = query(paymentsRef, where('userId', '==', userData.id), orderBy('date', 'desc'));
         const paymentsSnap = await getDocs(qPayments);
         const allPayments = paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
         
@@ -60,12 +60,12 @@ export default function UserDashboard() {
   }, [user, searchParams]);
 
   const handlePayBalance = async () => {
-    if (!user || balance <= 0) return;
+    if (!user || !userData || balance <= 0) return;
     try {
       // Create a pending payment record if one doesn't exist, or just use the balance
       // For simplicity, we'll create a new consolidated payment record to pass to Stripe
       const paymentRef = await addDoc(collection(db, 'payments'), {
-        userId: user.uid,
+        userId: userData.id,
         amount: balance,
         status: 'pending',
         date: new Date().toISOString(),
@@ -80,7 +80,7 @@ export default function UserDashboard() {
         body: JSON.stringify({
           amount: balance,
           description: 'Cordova Waste Balance Payment',
-          userId: user.uid,
+          userId: userData.id,
           paymentId: paymentRef.id
         }),
       });
@@ -99,16 +99,16 @@ export default function UserDashboard() {
 
   const handleServiceRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !requestContent.trim()) return;
+    if (!user || !userData || !requestContent.trim()) return;
     
     setSubmittingRequest(true);
     try {
       await addDoc(collection(db, 'interactions'), {
-        userId: user.uid,
+        userId: userData.id,
         type: 'service_request',
         content: requestContent,
         date: new Date().toISOString(),
-        authorId: user.uid,
+        authorId: userData.id,
         status: 'open'
       });
       setShowRequestModal(false);
