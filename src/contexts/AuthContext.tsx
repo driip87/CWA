@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 interface UserData {
@@ -11,6 +11,7 @@ interface UserData {
   phone?: string;
   address?: string;
   createdAt: string;
+  subscriptionStatus?: 'active' | 'inactive';
 }
 
 interface AuthContextType {
@@ -29,32 +30,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeDoc: () => void;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
         
-        if (userSnap.exists()) {
-          setUserData(userSnap.data() as UserData);
-        } else {
-          const newUserData: UserData = {
-            uid: currentUser.uid,
-            email: currentUser.email || '',
-            name: currentUser.displayName || '',
-            role: currentUser.email === 'kereeonmiller@gmail.com' ? 'admin' : 'user',
-            createdAt: new Date().toISOString(),
-          };
-          await setDoc(userRef, newUserData);
-          setUserData(newUserData);
-        }
+        unsubscribeDoc = onSnapshot(userRef, async (userSnap) => {
+          if (userSnap.exists()) {
+            setUserData(userSnap.data() as UserData);
+            setLoading(false);
+          } else {
+            const isAdmin = currentUser.email === 'kereeonmiller@gmail.com';
+            const newUserData: UserData = {
+              uid: currentUser.uid,
+              email: currentUser.email || '',
+              name: currentUser.displayName || '',
+              role: isAdmin ? 'admin' : 'user',
+              createdAt: new Date().toISOString(),
+              subscriptionStatus: isAdmin ? 'active' : 'inactive',
+            };
+            await setDoc(userRef, newUserData);
+          }
+        });
       } else {
         setUserData(null);
+        setLoading(false);
+        if (unsubscribeDoc) unsubscribeDoc();
       }
-      setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeDoc) unsubscribeDoc();
+    };
   }, []);
 
   return (

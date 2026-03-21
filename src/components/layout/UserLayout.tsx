@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { logOut } from '../../lib/firebase';
-import { LogOut, LayoutDashboard, Calendar, CreditCard, Settings } from 'lucide-react';
+import { logOut, db } from '../../lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { LogOut, LayoutDashboard, Calendar, CreditCard, Settings, ShieldAlert } from 'lucide-react';
 
 const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userData } = useAuth();
@@ -12,6 +13,18 @@ const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const handleLogout = async () => {
     await logOut();
     navigate('/');
+  };
+
+  const handleRestoreAdmin = async () => {
+    if (!userData) return;
+    try {
+      await updateDoc(doc(db, 'users', userData.uid), {
+        role: 'admin',
+        subscriptionStatus: 'active'
+      });
+    } catch (error) {
+      console.error('Error restoring admin:', error);
+    }
   };
 
   const navItems = [
@@ -51,6 +64,15 @@ const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </nav>
 
         <div className="p-4 border-t border-gray-200 space-y-2">
+          {userData?.email === 'kereeonmiller@gmail.com' && userData?.role !== 'admin' && (
+            <button 
+              onClick={handleRestoreAdmin}
+              className="w-full flex items-center gap-3 px-4 py-2 text-white bg-gray-900 hover:bg-gray-800 rounded-xl transition-colors mb-2"
+            >
+              <ShieldAlert size={20} />
+              <span className="font-medium">Restore Admin</span>
+            </button>
+          )}
           {userData?.role === 'admin' && (
             <Link 
               to="/admin"

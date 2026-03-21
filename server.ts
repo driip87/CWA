@@ -66,6 +66,45 @@ async function startServer() {
     }
   });
 
+  app.post('/api/create-subscription-session', async (req, res) => {
+    try {
+      const { planName, amount, userId, returnUrl } = req.body;
+      const stripe = getStripe();
+      const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+      const baseUrl = returnUrl || `${appUrl}/dashboard`;
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: planName || 'Monthly Waste Collection',
+              },
+              unit_amount: Math.round(amount * 100), // Convert to cents
+              recurring: {
+                interval: 'month',
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        success_url: `${baseUrl}?subscription_success=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}?subscription_cancelled=true`,
+        metadata: {
+          userId
+        }
+      });
+
+      res.json({ url: session.url });
+    } catch (error: any) {
+      console.error('Stripe error:', error);
+      res.status(500).json({ error: error.message || 'Failed to create subscription session' });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

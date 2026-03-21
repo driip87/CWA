@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { logOut } from '../../lib/firebase';
-import { LogOut, LayoutDashboard, Users, Calendar, Box, BarChart3, Bell } from 'lucide-react';
+import { LogOut, LayoutDashboard, Users, Calendar, Box, BarChart3, Bell, Map } from 'lucide-react';
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userData } = useAuth();
@@ -18,6 +18,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { path: '/admin', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
     { path: '/admin/customers', icon: <Users size={20} />, label: 'Customers' },
     { path: '/admin/pickups', icon: <Calendar size={20} />, label: 'Pickups' },
+    { path: '/admin/routes', icon: <Map size={20} />, label: 'Routes' },
     { path: '/admin/inventory', icon: <Box size={20} />, label: 'Inventory' },
     { path: '/admin/analytics', icon: <BarChart3 size={20} />, label: 'Analytics' },
   ];

@@ -1,21 +1,24 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Landing from './pages/Landing';
 import UserDashboard from './pages/user/Dashboard';
 import UserPickups from './pages/user/Pickups';
 import UserPayments from './pages/user/Payments';
 import UserSettings from './pages/user/Settings';
+import Subscribe from './pages/user/Subscribe';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminCustomers from './pages/admin/Customers';
 import AdminPickups from './pages/admin/Pickups';
 import AdminInventory from './pages/admin/Inventory';
 import AdminAnalytics from './pages/admin/Analytics';
+import AdminRoutes from './pages/admin/Routes';
 import UserLayout from './components/layout/UserLayout';
 import AdminLayout from './components/layout/AdminLayout';
 
 const ProtectedRoute = ({ children, role }: { children: React.ReactNode; role?: 'user' | 'admin' }) => {
   const { user, userData, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
@@ -29,6 +32,20 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode; role?: 
     return <Navigate to={userData?.role === 'admin' ? '/admin' : '/dashboard'} />;
   }
 
+  // Subscription enforcement for users
+  if (role === 'user' && userData?.role !== 'admin') {
+    const isSubscribed = userData?.subscriptionStatus === 'active';
+    const isSubscribePage = location.pathname === '/subscribe';
+
+    if (!isSubscribed && !isSubscribePage) {
+      return <Navigate to="/subscribe" />;
+    }
+
+    if (isSubscribed && isSubscribePage) {
+      return <Navigate to="/dashboard" />;
+    }
+  }
+
   return <>{children}</>;
 };
 
@@ -40,6 +57,11 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           
           {/* User Routes */}
+          <Route path="/subscribe" element={
+            <ProtectedRoute role="user">
+              <Subscribe />
+            </ProtectedRoute>
+          } />
           <Route path="/dashboard" element={
             <ProtectedRoute role="user">
               <UserLayout>
@@ -102,6 +124,13 @@ export default function App() {
             <ProtectedRoute role="admin">
               <AdminLayout>
                 <AdminAnalytics />
+              </AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/routes" element={
+            <ProtectedRoute role="admin">
+              <AdminLayout>
+                <AdminRoutes />
               </AdminLayout>
             </ProtectedRoute>
           } />
