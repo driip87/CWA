@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../lib/firebase';
 import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Check, ShieldAlert } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Check } from 'lucide-react';
 
 export default function Subscribe() {
   const { user, userData } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [processingSuccess, setProcessingSuccess] = useState(false);
 
@@ -17,7 +17,7 @@ export default function Subscribe() {
       const planName = searchParams.get('plan') || 'Monthly Subscription';
       const amount = Number(searchParams.get('amount')) || 0;
 
-      if (success === 'true' && user && !processingSuccess) {
+      if (success === 'true' && user && userData && !processingSuccess) {
         setProcessingSuccess(true);
         try {
           // Update user status
@@ -43,10 +43,13 @@ export default function Subscribe() {
             date: nextPickupDate.toISOString(),
             status: 'scheduled',
             binLocation: 'Curbside',
-            type: 'Standard Waste'
+            createdAt: new Date().toISOString(),
           });
 
-          // The AuthContext onSnapshot will pick up the change and redirect to dashboard
+          const nextParams = new URLSearchParams(searchParams);
+          nextParams.delete('subscription_success');
+          nextParams.delete('session_id');
+          setSearchParams(nextParams, { replace: true });
         } catch (error) {
           console.error("Error activating subscription:", error);
           alert("There was an issue activating your account. Please contact support.");
@@ -54,7 +57,7 @@ export default function Subscribe() {
       }
     };
     handleSuccess();
-  }, [searchParams, user, processingSuccess]);
+  }, [processingSuccess, searchParams, setSearchParams, user, userData]);
 
   const handleSubscribe = async (planName: string, amount: number) => {
     if (!user || !userData) return;
@@ -84,18 +87,6 @@ export default function Subscribe() {
     }
   };
 
-  const handleRestoreAdmin = async () => {
-    if (!user || !userData) return;
-    try {
-      await updateDoc(doc(db, 'users', userData.id), {
-        role: 'admin',
-        subscriptionStatus: 'active'
-      });
-    } catch (error) {
-      console.error('Error restoring admin:', error);
-    }
-  };
-
   if (processingSuccess) {
     return (
       <div className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
@@ -110,16 +101,6 @@ export default function Subscribe() {
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center relative">
-      {userData?.email === 'kereeonmiller@gmail.com' && (
-        <button 
-          onClick={handleRestoreAdmin}
-          className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors shadow-lg"
-        >
-          <ShieldAlert size={18} />
-          Restore Admin Access
-        </button>
-      )}
-      
       <div className="max-w-7xl mx-auto w-full">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Choose Your Collection Plan</h1>

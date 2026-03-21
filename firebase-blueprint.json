@@ -1,40 +1,92 @@
 {
   "entities": {
-    "User": {
-      "title": "User",
-      "description": "A user of the Cordova Waste App (customer or admin)",
+    "CustomerProfile": {
+      "title": "CustomerProfile",
+      "description": "Operational customer record used by subscriptions, routes, pickups, payments, and support tooling.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string", "description": "Firebase Auth UID" },
         "email": { "type": "string", "format": "email" },
         "name": { "type": "string" },
         "role": { "type": "string", "enum": ["user", "admin"] },
         "phone": { "type": "string" },
         "address": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "inactive"] },
+        "claimStatus": { "type": "string", "enum": ["not_invited", "invited", "claimed", "expired", "needs_review", "conflict", "missing_email"] },
+        "linkedAuthUid": { "type": ["string", "null"] },
+        "imported": { "type": "boolean" },
+        "importSource": { "type": ["string", "null"] },
+        "importBatchId": { "type": ["string", "null"] },
+        "normalizedEmail": { "type": ["string", "null"] },
+        "normalizedPhone": { "type": ["string", "null"] },
+        "normalizedAddress": { "type": ["string", "null"] },
+        "plan": { "type": "string" },
+        "collectionDay": { "type": "string" },
+        "recordStatus": { "type": "string", "enum": ["active", "archived"] },
+        "mergedIntoCustomerId": { "type": ["string", "null"] },
+        "latestInviteId": { "type": ["string", "null"] },
+        "latestInviteSentAt": { "type": ["string", "null"], "format": "date-time" },
+        "latestInviteExpiresAt": { "type": ["string", "null"], "format": "date-time" },
+        "latestInviteResendCount": { "type": "number" }
       },
-      "required": ["uid", "email", "role", "createdAt"]
+      "required": ["role", "createdAt", "claimStatus", "recordStatus"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "Auth-facing identity record keyed by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "customerId": { "type": ["string", "null"] },
+        "providers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "emailVerified": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["active", "disabled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLoginAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "providers", "emailVerified", "status", "createdAt", "lastLoginAt"]
+    },
+    "ClaimInvite": {
+      "title": "ClaimInvite",
+      "description": "Secure, hashed invite token record used for imported account claiming.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "tokenHash": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "claimed", "expired", "revoked"] },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "claimedAt": { "type": ["string", "null"], "format": "date-time" },
+        "sentBy": { "type": ["string", "null"] },
+        "resendCount": { "type": "number" }
+      },
+      "required": ["customerId", "email", "tokenHash", "status", "expiresAt", "sentAt", "resendCount"]
     },
     "Pickup": {
       "title": "Pickup",
-      "description": "A scheduled waste pickup",
+      "description": "A scheduled waste pickup.",
       "type": "object",
       "properties": {
-        "userId": { "type": "string", "description": "ID of the user requesting the pickup" },
+        "userId": { "type": "string", "description": "Customer profile ID" },
         "status": { "type": "string", "enum": ["scheduled", "completed", "cancelled"] },
         "date": { "type": "string", "format": "date-time" },
         "binLocation": { "type": "string" },
         "notes": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "status", "date", "createdAt"]
+      "required": ["userId", "status", "date"]
     },
     "Payment": {
       "title": "Payment",
-      "description": "A payment record",
+      "description": "A payment record.",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
+        "userId": { "type": "string", "description": "Customer profile ID" },
         "amount": { "type": "number" },
         "status": { "type": "string", "enum": ["paid", "pending", "failed"] },
         "date": { "type": "string", "format": "date-time" },
@@ -44,7 +96,7 @@
     },
     "Inventory": {
       "title": "Inventory",
-      "description": "Asset tracking for bins, vehicles, and equipment",
+      "description": "Asset tracking for bins, vehicles, and equipment.",
       "type": "object",
       "properties": {
         "type": { "type": "string", "enum": ["bin", "vehicle", "equipment"] },
@@ -58,7 +110,7 @@
     },
     "Expense": {
       "title": "Expense",
-      "description": "A business expense record",
+      "description": "A business expense record.",
       "type": "object",
       "properties": {
         "amount": { "type": "number" },
@@ -70,43 +122,51 @@
     },
     "Interaction": {
       "title": "Interaction",
-      "description": "A customer interaction or service request note",
+      "description": "A customer interaction or service request note.",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
+        "userId": { "type": "string", "description": "Customer profile ID" },
         "type": { "type": "string", "enum": ["note", "call", "email", "service_request"] },
         "content": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
-        "authorId": { "type": "string" },
+        "authorId": { "type": "string", "description": "Customer profile ID of the author" },
         "status": { "type": "string", "enum": ["open", "resolved"] }
       },
       "required": ["userId", "type", "content", "date", "authorId"]
     }
   },
   "firestore": {
-    "users/{userId}": {
-      "schema": { "$ref": "#/entities/User" },
-      "description": "User profiles"
+    "users/{customerId}": {
+      "schema": { "$ref": "#/entities/CustomerProfile" },
+      "description": "Operational customer profiles."
+    },
+    "accounts/{authUid}": {
+      "schema": { "$ref": "#/entities/Account" },
+      "description": "Auth-facing account records keyed by Firebase Auth UID."
+    },
+    "claimInvites/{inviteId}": {
+      "schema": { "$ref": "#/entities/ClaimInvite" },
+      "description": "Invite and claim token records."
     },
     "pickups/{pickupId}": {
       "schema": { "$ref": "#/entities/Pickup" },
-      "description": "Scheduled pickups"
+      "description": "Scheduled pickups."
     },
     "payments/{paymentId}": {
       "schema": { "$ref": "#/entities/Payment" },
-      "description": "Payment records"
+      "description": "Payment records."
     },
     "inventory/{itemId}": {
       "schema": { "$ref": "#/entities/Inventory" },
-      "description": "Inventory and asset tracking"
+      "description": "Inventory and asset tracking."
     },
     "expenses/{expenseId}": {
       "schema": { "$ref": "#/entities/Expense" },
-      "description": "Business expenses"
+      "description": "Business expenses."
     },
     "interactions/{interactionId}": {
       "schema": { "$ref": "#/entities/Interaction" },
-      "description": "Customer interactions and notes"
+      "description": "Customer interactions and notes."
     }
   }
 }

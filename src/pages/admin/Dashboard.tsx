@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, query, getDocs, orderBy, limit, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { Users, Truck, DollarSign, Activity, X, UserCircle } from 'lucide-react';
+import { Users, Truck, DollarSign, Activity, X } from 'lucide-react';
 import { format } from 'date-fns';
-import { useAuth } from '../../contexts/AuthContext';
 
 export default function AdminDashboard() {
-  const { user, userData } = useAuth();
   const [stats, setStats] = useState({
     totalCustomers: 0,
     activePickups: 0,
@@ -17,7 +15,6 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [showTestFlowModal, setShowTestFlowModal] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [invoiceData, setInvoiceData] = useState({ userId: '', amount: '', description: '' });
   const [submittingInvoice, setSubmittingInvoice] = useState(false);
@@ -89,19 +86,6 @@ export default function AdminDashboard() {
       alert('Failed to generate invoice.');
     } finally {
       setSubmittingInvoice(false);
-    }
-  };
-
-  const handleTestUserFlow = async () => {
-    if (!user || !userData) return;
-    try {
-      await updateDoc(doc(db, 'users', userData.id), {
-        role: 'user',
-        subscriptionStatus: 'inactive'
-      });
-      setShowTestFlowModal(false);
-    } catch (error) {
-      console.error('Error demoting user:', error);
     }
   };
 
@@ -208,12 +192,6 @@ export default function AdminDashboard() {
             >
               <DollarSign size={18} /> Generate Invoice
             </button>
-            <button 
-              onClick={() => setShowTestFlowModal(true)}
-              className="w-full bg-blue-600/20 text-blue-400 font-semibold py-3 px-4 rounded-lg hover:bg-blue-600/30 transition-colors flex items-center justify-center gap-2 mt-4 border border-blue-500/30"
-            >
-              <UserCircle size={18} /> Test User Flow
-            </button>
           </div>
           
           {/* Decorative element */}
@@ -295,39 +273,6 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-      {/* Test Flow Modal */}
-      {showTestFlowModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Test User Flow</h2>
-              <button 
-                onClick={() => setShowTestFlowModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={24} />
-              </button>
-            </div>
-            <p className="text-gray-600 mb-6">
-              This will demote your account to a new user so you can test the subscription flow. You can restore admin access later from the subscribe page or user dashboard. Continue?
-            </p>
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setShowTestFlowModal(false)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleTestUserFlow}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-              >
-                Yes, Demote Me
-              </button>
-            </div>
           </div>
         </div>
       )}
