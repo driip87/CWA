@@ -113,7 +113,7 @@ export default function Landing() {
       <header className="px-8 py-6 flex justify-between items-center max-w-7xl mx-auto w-full">
         <div className="flex items-center gap-2 text-[var(--cw-primary)]">
           <Recycle size={32} />
-          <h1 className="text-2xl font-serif font-bold italic">Cordova Waste</h1>
+          <h1 className="text-2xl font-serif font-bold italic">CWA</h1>
         </div>
         <button
           onClick={() => {
@@ -129,7 +129,7 @@ export default function Landing() {
       <main className="flex-1 flex flex-col items-center justify-center text-center px-4 py-20">
         <p className="cw-kicker mb-5">Unified Waste Operations</p>
         <h2 className="text-5xl md:text-7xl font-serif font-bold italic text-[var(--cw-ink)] mb-6 max-w-4xl leading-tight">
-          Sustainable Waste Management for Cordova
+          Sustainable Waste Operations
         </h2>
         <p className="text-xl text-[color:var(--cw-ink-soft)] mb-12 max-w-2xl leading-8">
           Manage your pickups, track your environmental impact, and streamline your payments all in one unified platform.
@@ -176,7 +176,7 @@ export default function Landing() {
       </main>
 
       <footer className="py-8 text-center text-[color:var(--cw-ink-soft)] text-sm border-t border-[color:var(--cw-line)]">
-        &copy; {new Date().getFullYear()} Cordova Waste. All rights reserved.
+        &copy; {new Date().getFullYear()} CWA. All rights reserved.
       </footer>
 
       {showAuthModal && (

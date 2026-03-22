@@ -172,12 +172,12 @@ async function sendInviteEmail(email: string, claimLink: string, customerName?: 
   await resend.emails.send({
     from,
     to: email,
-    subject: 'Claim your Cordova Waste account',
-    text: `Hello ${customerName || ''}\n\nClaim your Cordova Waste account here: ${claimLink}\n\nThis link expires in ${INVITE_TTL_DAYS} days.`,
+    subject: 'Claim your CWA account',
+    text: `Hello ${customerName || ''}\n\nClaim your CWA account here: ${claimLink}\n\nThis link expires in ${INVITE_TTL_DAYS} days.`,
     html: `
       <div>
         <p>Hello ${customerName || ''},</p>
-        <p>Claim your Cordova Waste account by following this link:</p>
+        <p>Claim your CWA account by following this link:</p>
         <p><a href="${claimLink}">${claimLink}</a></p>
         <p>This link expires in ${INVITE_TTL_DAYS} days.</p>
       </div>
@@ -553,7 +553,7 @@ export async function getClaimPreview(rawToken: string) {
     email: invite.email,
     expiresAt: invite.expiresAt,
     status: invite.status,
-    customerName: customer?.name || 'Cordova Waste customer',
+    customerName: customer?.name || 'CWA customer',
   };
 }
 

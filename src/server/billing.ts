@@ -213,7 +213,7 @@ async function maybeScheduleInitialPickup(customer: BillingCustomerRecord) {
     status: 'scheduled',
     binLocation: 'Curbside',
     createdAt: nowIso(),
-    sourceLabel: 'Cordova Platform',
+    sourceLabel: 'CWA Platform',
   });
   return pickupRef.id;
 }
@@ -462,7 +462,7 @@ export async function createBalancePaymentCheckoutSession(params: {
         price_data: {
           currency: 'usd',
           product_data: {
-            name: 'Cordova Waste Balance Payment',
+            name: 'CWA Balance Payment',
           },
           unit_amount: Math.round(amount * 100),
         },

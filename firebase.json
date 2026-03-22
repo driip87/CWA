@@ -1,7 +1,7 @@
 {
   "firestore": [
     {
-      "database": "ai-studio-308bc8bc-4d22-4d8a-8290-db7bbdca94bc",
+      "database": "cwa-db",
       "rules": "firestore.rules"
     }
   ],

@@ -29,7 +29,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <div className="cw-shell font-sans">
       <aside className="cw-sidebar w-72 flex flex-col shadow-2xl">
         <div className="p-7 border-b border-white/10">
-          <h1 className="text-xl font-bold font-serif italic tracking-wide text-[#6b8e6b]">Cordova Waste</h1>
+          <h1 className="text-xl font-bold font-serif italic tracking-wide text-[#6b8e6b]">CWA</h1>
           <p className="text-xs uppercase tracking-[0.28em] text-white/45 mt-2">Admin Portal</p>
         </div>
         

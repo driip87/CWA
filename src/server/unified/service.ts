@@ -129,8 +129,7 @@ async function ensureTenant(tenantId = DEFAULT_TENANT_ID) {
   }
 
   const existing = snapshot.data() as TenantRecord;
-  const needsDefaultNameRefresh =
-    tenantId === DEFAULT_TENANT_ID && (!existing.name || existing.name === 'Cordova Default Tenant');
+  const needsDefaultNameRefresh = tenantId === DEFAULT_TENANT_ID && !existing.name;
 
   if (!existing.updatedAt || needsDefaultNameRefresh || !existing.slug) {
     await tenantRef.set(
@@ -743,7 +742,7 @@ export async function getUserDashboard(tenantId: string, legacyCustomerId: strin
         description: String(payment.description || 'Invoice'),
         status: String(payment.status || 'pending'),
         date: String(payment.date || nowIso()),
-        sourceLabel: 'Cordova Platform',
+        sourceLabel: 'CWA Platform',
       })),
     (payment) => payment.date,
   ).slice(0, 3);
@@ -793,7 +792,7 @@ export async function getUserPayments(tenantId: string, legacyCustomerId: string
         description: String(payment.description || 'Invoice'),
         status: String(payment.status || 'pending'),
         date: String(payment.date || nowIso()),
-        sourceLabel: 'Cordova Platform',
+        sourceLabel: 'CWA Platform',
       })),
     (payment) => payment.date,
   );

@@ -447,7 +447,7 @@ export function buildRoutewareSnapshot(
         tenantId,
         'exception',
         `${interaction.id}:request`,
-        'Cordova service request',
+        'CWA service request',
         interaction,
         syncedAt,
       );
@@ -504,7 +504,7 @@ export function buildRoutewareSnapshot(
       lastPaymentAt: lastPayment?.date || null,
       paymentCount: invoicePayments.length,
       status: outstandingBalance > 0 ? 'attention' : 'current',
-      sourceLabel: 'Cordova Platform',
+      sourceLabel: 'CWA Platform',
     };
   });
 

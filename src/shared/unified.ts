@@ -1,5 +1,5 @@
-export const DEFAULT_TENANT_ID = 'cordova-default';
-export const DEFAULT_TENANT_NAME = 'Cordova Waste Workspace';
+export const DEFAULT_TENANT_ID = 'cwa-main';
+export const DEFAULT_TENANT_NAME = 'CWA Operations';
 
 export type VendorId = 'routeware' | 'routesmart' | 'fleetmind' | 'wm';
 export type ConnectionStatus = 'active' | 'paused' | 'error';

@@ -146,7 +146,7 @@ export default function AdminDashboard() {
             <h2 className="cw-section-title mb-4">Operational Notes</h2>
             <ul className="space-y-3 text-sm text-[color:var(--cw-ink-soft)]">
               <li>Route completion and stop updates currently sync in from connected systems.</li>
-              <li>Customer support and billing actions remain available directly in Cordova Waste.</li>
+              <li>Customer support and billing actions remain available directly in CWA.</li>
               <li>Customers, routes, stops, proofs, and exceptions stay aligned in one operational workspace.</li>
             </ul>
           </div>

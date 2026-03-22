@@ -85,7 +85,7 @@ export default function Claim() {
           {preview?.customerName ? `Finish setting up ${preview.customerName}` : 'Claim your account'}
         </h1>
         <p className="text-[color:var(--cw-ink-soft)] mb-6">
-          This claim link connects you to your existing Cordova Waste customer profile without creating a duplicate account.
+          This claim link connects you to your existing CWA customer profile without creating a duplicate account.
         </p>
 
         {error && <div className="mb-4 cw-alert cw-alert-danger">{error}</div>}
