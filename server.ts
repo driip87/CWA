@@ -10,10 +10,21 @@ import {
   bootstrapAuthSession,
   createInviteForCustomer,
   getClaimPreview,
-  importLegacyCustomers,
   resolveCustomerConflict,
   revokeInvite,
 } from './src/server/phase1';
+import {
+  confirmMigrationJob,
+  createMigrationJob,
+  exportMigrationAdapter,
+  exportMigrationErrors,
+  getMigrationDashboard,
+  getMigrationJobDetails,
+  listMigrationJobs,
+  rerunMigrationJob,
+  saveMigrationColumnMapping,
+  validateMigrationJob,
+} from './src/server/migration';
 
 dotenv.config();
 
@@ -81,13 +92,116 @@ async function startServer() {
     }
   });
 
-  app.post('/api/admin/import-customers', async (req, res) => {
+  app.post('/api/admin/migration-jobs', async (req, res) => {
     try {
       const { decodedToken } = await verifyAdminRequest(req);
-      const result = await importLegacyCustomers(req.body?.csvText || '', decodedToken.uid);
+      const result = await createMigrationJob({
+        csvText: req.body?.csvText || '',
+        fileName: req.body?.fileName,
+        sourceSystem: req.body?.sourceSystem,
+        adapterType: req.body?.adapterType,
+        adminUid: decodedToken.uid,
+      });
       res.json(result);
     } catch (error: any) {
-      res.status(400).json({ error: error.message || 'Failed to import customers' });
+      res.status(400).json({ error: error.message || 'Failed to create migration job' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/list', async (req, res) => {
+    try {
+      await verifyAdminRequest(req);
+      const result = await listMigrationJobs();
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to list migration jobs' });
+    }
+  });
+
+  app.post('/api/admin/migration-dashboard', async (req, res) => {
+    try {
+      await verifyAdminRequest(req);
+      const result = await getMigrationDashboard();
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to load migration dashboard' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/:jobId/details', async (req, res) => {
+    try {
+      await verifyAdminRequest(req);
+      const result = await getMigrationJobDetails(req.params.jobId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to load migration job details' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/:jobId/mapping', async (req, res) => {
+    try {
+      const { decodedToken } = await verifyAdminRequest(req);
+      const result = await saveMigrationColumnMapping(req.params.jobId, {
+        columnMapping: req.body?.columnMapping || {},
+        autoSendInvites: req.body?.autoSendInvites,
+        adminUid: decodedToken.uid,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to save migration mapping' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/:jobId/validate', async (req, res) => {
+    try {
+      const { decodedToken } = await verifyAdminRequest(req);
+      const result = await validateMigrationJob(req.params.jobId, decodedToken.uid);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to validate migration job' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/:jobId/confirm', async (req, res) => {
+    try {
+      const { decodedToken } = await verifyAdminRequest(req);
+      const result = await confirmMigrationJob(req.params.jobId, {
+        adminUid: decodedToken.uid,
+        autoSendInvites: req.body?.autoSendInvites,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to confirm migration job' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/:jobId/rerun', async (req, res) => {
+    try {
+      const { decodedToken } = await verifyAdminRequest(req);
+      const result = await rerunMigrationJob(req.params.jobId, decodedToken.uid);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to rerun migration job' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/:jobId/error-export', async (req, res) => {
+    try {
+      const { decodedToken } = await verifyAdminRequest(req);
+      const result = await exportMigrationErrors(req.params.jobId, decodedToken.uid);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to export migration errors' });
+    }
+  });
+
+  app.post('/api/admin/migration-jobs/:jobId/adapter-export', async (req, res) => {
+    try {
+      const { decodedToken } = await verifyAdminRequest(req);
+      const result = await exportMigrationAdapter(req.params.jobId, decodedToken.uid);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to export migration adapter payload' });
     }
   });
 

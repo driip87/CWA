@@ -37,6 +37,15 @@ export interface CustomerProfile {
   latestInviteSentAt?: string | null;
   latestInviteExpiresAt?: string | null;
   latestInviteResendCount?: number;
+  sourceSystem?: string | null;
+  externalAccountId?: string | null;
+  routeId?: string | null;
+  stopSequence?: number | null;
+  serviceDays?: string[];
+  serviceType?: string | null;
+  sourceFingerprint?: string | null;
+  lastMigrationJobId?: string | null;
+  lastMigrationAppliedAt?: string | null;
 }
 
 export interface ImportedCustomerInput {
