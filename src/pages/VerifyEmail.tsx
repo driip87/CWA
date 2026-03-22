@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { MailCheck, RefreshCw } from 'lucide-react';
 import { reload } from 'firebase/auth';
 import { useAuth } from '../contexts/AuthContext';
+import { getFirebaseAuthErrorMessage } from '../lib/firebaseAuthErrors';
 import { auth } from '../lib/firebase';
 
 export default function VerifyEmail() {
@@ -31,8 +32,8 @@ export default function VerifyEmail() {
     try {
       await resendVerification();
       setMessage('Verification email sent.');
-    } catch (verificationError: any) {
-      setError(verificationError.message || 'Unable to resend verification email');
+    } catch (verificationError) {
+      setError(getFirebaseAuthErrorMessage(verificationError, 'Unable to resend verification email'));
     } finally {
       setSubmitting(false);
     }
@@ -47,52 +48,54 @@ export default function VerifyEmail() {
 
     try {
       await reload(auth.currentUser);
+      await auth.currentUser.getIdToken(true);
       await refreshSession();
       if (auth.currentUser.emailVerified) {
         navigate(accountData?.role === 'admin' ? '/admin' : '/dashboard');
       } else {
         setMessage('Email is still unverified.');
       }
-    } catch (refreshError: any) {
-      setError(refreshError.message || 'Unable to refresh verification state');
+    } catch (refreshError) {
+      setError(getFirebaseAuthErrorMessage(refreshError, 'Unable to refresh verification state'));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f0] px-4 py-12 flex items-center justify-center">
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-[#6b8e6b]/10 text-[#6b8e6b] flex items-center justify-center mx-auto mb-6">
+    <div className="min-h-screen px-4 py-12 flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.78),transparent_32%),linear-gradient(180deg,#f8f7f2_0%,#f0ede3_100%)]">
+      <div className="cw-card w-full max-w-lg p-8 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--cw-accent-soft)] text-[var(--cw-accent)] flex items-center justify-center mx-auto mb-6">
           <MailCheck size={30} />
         </div>
-        <h1 className="text-3xl font-serif font-bold text-[#2d2d20] mb-3">Verify your email</h1>
-        <p className="text-gray-600 mb-6">
+        <p className="cw-kicker mb-4">Email Verification</p>
+        <h1 className="text-3xl font-serif font-bold italic text-[var(--cw-ink)] mb-3">Verify your email</h1>
+        <p className="text-[color:var(--cw-ink-soft)] mb-6">
           We sent a verification email to <span className="font-medium">{user?.email}</span>. Verify the address to finish linking your account and unlock access.
         </p>
 
-        {error && <div className="mb-4 p-3 rounded-xl bg-red-50 text-red-600 text-sm">{error}</div>}
-        {message && <div className="mb-4 p-3 rounded-xl bg-green-50 text-green-700 text-sm">{message}</div>}
+        {error && <div className="mb-4 cw-alert cw-alert-danger">{error}</div>}
+        {message && <div className="mb-4 cw-alert cw-alert-success">{message}</div>}
 
         <div className="space-y-3">
           <button
             onClick={handleResend}
             disabled={submitting}
-            className="w-full py-3 bg-[#5A5A40] text-white rounded-xl font-medium hover:bg-[#4a4a35] transition-colors disabled:opacity-50"
+            className="cw-btn cw-btn-primary w-full"
           >
             Resend Verification Email
           </button>
           <button
             onClick={handleRefresh}
             disabled={submitting}
-            className="w-full py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            className="cw-btn cw-btn-secondary w-full disabled:opacity-50"
           >
             <RefreshCw size={16} />
             I Verified My Email
           </button>
         </div>
 
-        <Link to="/" className="inline-block mt-6 text-sm text-[#5A5A40] font-medium hover:underline">
+        <Link to="/" className="inline-block mt-6 text-sm cw-link">
           Back to home
         </Link>
       </div>

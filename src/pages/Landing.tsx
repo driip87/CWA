@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Leaf, Lock, Mail, Recycle, Truck, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { signInWithGoogle } from '../lib/firebase';
+import { getFirebaseAuthErrorMessage } from '../lib/firebaseAuthErrors';
+import { AUTH_MODE_QUERY_PARAM, GOOGLE_SIGN_IN_QUERY_PARAM, signInWithGoogle } from '../lib/firebase';
 
 export default function Landing() {
   const { user, accountData, userData, loginWithEmail, signupWithEmail, resetPassword } = useAuth();
@@ -17,12 +18,50 @@ export default function Landing() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const resumedGoogleSignIn = useRef(false);
 
   useEffect(() => {
     const claimToken = searchParams.get('claim');
     if (claimToken) {
       navigate(`/claim?token=${encodeURIComponent(claimToken)}`, { replace: true });
     }
+  }, [navigate, searchParams]);
+
+  useEffect(() => {
+    const requestedMode = searchParams.get(AUTH_MODE_QUERY_PARAM);
+    const shouldResumeGoogleSignIn = searchParams.get(GOOGLE_SIGN_IN_QUERY_PARAM) === '1';
+
+    if (requestedMode === 'login' || requestedMode === 'signup' || requestedMode === 'reset') {
+      setAuthMode(requestedMode);
+      setShowAuthModal(true);
+    }
+
+    if (!shouldResumeGoogleSignIn || resumedGoogleSignIn.current) {
+      return;
+    }
+
+    resumedGoogleSignIn.current = true;
+    setShowAuthModal(true);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete(GOOGLE_SIGN_IN_QUERY_PARAM);
+    nextParams.delete(AUTH_MODE_QUERY_PARAM);
+    navigate(
+      {
+        pathname: '/',
+        search: nextParams.toString() ? `?${nextParams.toString()}` : '',
+      },
+      { replace: true },
+    );
+
+    void (async () => {
+      try {
+        await signInWithGoogle();
+      } catch (authError) {
+        console.error('Login failed', authError);
+        setError(getFirebaseAuthErrorMessage(authError, 'Google sign-in failed'));
+      }
+    })();
   }, [navigate, searchParams]);
 
   useEffect(() => {
@@ -38,10 +77,10 @@ export default function Landing() {
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithGoogle();
+      await signInWithGoogle({ authMode });
     } catch (authError) {
       console.error('Login failed', authError);
-      setError('Google sign-in failed');
+      setError(getFirebaseAuthErrorMessage(authError, 'Google sign-in failed'));
     }
   };
 
@@ -62,17 +101,17 @@ export default function Landing() {
         setMessage('Password reset email sent. Check your inbox.');
         setAuthMode('login');
       }
-    } catch (authError: any) {
-      setError(authError.message || 'Authentication failed');
+    } catch (authError) {
+      setError(getFirebaseAuthErrorMessage(authError, 'Authentication failed'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f0] font-sans text-gray-900 flex flex-col">
+    <div className="min-h-screen text-[var(--cw-ink)] flex flex-col bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.78),transparent_32%),linear-gradient(180deg,#f8f7f2_0%,#f0ede3_100%)]">
       <header className="px-8 py-6 flex justify-between items-center max-w-7xl mx-auto w-full">
-        <div className="flex items-center gap-2 text-[#5A5A40]">
+        <div className="flex items-center gap-2 text-[var(--cw-primary)]">
           <Recycle size={32} />
           <h1 className="text-2xl font-serif font-bold italic">Cordova Waste</h1>
         </div>
@@ -81,17 +120,18 @@ export default function Landing() {
             setAuthMode('login');
             setShowAuthModal(true);
           }}
-          className="px-6 py-2.5 bg-[#5A5A40] text-white rounded-full font-medium hover:bg-[#4a4a35] transition-colors flex items-center gap-2"
+          className="cw-btn cw-btn-primary"
         >
           Sign In <ArrowRight size={18} />
         </button>
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center text-center px-4 py-20">
-        <h2 className="text-5xl md:text-7xl font-serif font-bold text-[#2d2d20] mb-6 max-w-4xl leading-tight">
+        <p className="cw-kicker mb-5">Unified Waste Operations</p>
+        <h2 className="text-5xl md:text-7xl font-serif font-bold italic text-[var(--cw-ink)] mb-6 max-w-4xl leading-tight">
           Sustainable Waste Management for Cordova
         </h2>
-        <p className="text-xl text-gray-600 mb-12 max-w-2xl">
+        <p className="text-xl text-[color:var(--cw-ink-soft)] mb-12 max-w-2xl leading-8">
           Manage your pickups, track your environmental impact, and streamline your payments all in one unified platform.
         </p>
 
@@ -101,86 +141,86 @@ export default function Landing() {
               setAuthMode('signup');
               setShowAuthModal(true);
             }}
-            className="px-8 py-4 bg-[#5A5A40] text-white rounded-full font-medium text-lg hover:bg-[#4a4a35] transition-colors shadow-lg shadow-[#5A5A40]/20 flex items-center justify-center gap-2"
+            className="cw-btn cw-btn-primary text-lg px-8 py-4"
           >
             Get Started <ArrowRight size={20} />
           </button>
-          <button className="px-8 py-4 bg-white text-[#5A5A40] border border-[#5A5A40]/20 rounded-full font-medium text-lg hover:bg-gray-50 transition-colors">
+          <button className="cw-btn cw-btn-secondary text-lg px-8 py-4">
             Learn More
           </button>
         </div>
 
         <div className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto w-full text-left">
-          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-            <div className="w-12 h-12 bg-[#5A5A40]/10 rounded-2xl flex items-center justify-center text-[#5A5A40] mb-6">
+          <div className="cw-card p-8">
+            <div className="cw-icon-chip mb-6 rounded-2xl">
               <Leaf size={24} />
             </div>
             <h3 className="text-xl font-bold mb-3">Eco-Friendly</h3>
-            <p className="text-gray-600">Track your recycling efforts and see your direct impact on the environment.</p>
+            <p className="text-[color:var(--cw-ink-soft)]">Track your recycling efforts and see your direct impact on the environment.</p>
           </div>
-          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-            <div className="w-12 h-12 bg-[#5A5A40]/10 rounded-2xl flex items-center justify-center text-[#5A5A40] mb-6">
+          <div className="cw-card p-8">
+            <div className="cw-icon-chip mb-6 rounded-2xl">
               <Truck size={24} />
             </div>
             <h3 className="text-xl font-bold mb-3">Reliable Pickups</h3>
-            <p className="text-gray-600">Schedule, modify, and track your waste collection services in real-time.</p>
+            <p className="text-[color:var(--cw-ink-soft)]">Schedule, modify, and track your waste collection services in real-time.</p>
           </div>
-          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-            <div className="w-12 h-12 bg-[#5A5A40]/10 rounded-2xl flex items-center justify-center text-[#5A5A40] mb-6">
+          <div className="cw-card p-8">
+            <div className="cw-icon-chip mb-6 rounded-2xl">
               <Recycle size={24} />
             </div>
             <h3 className="text-xl font-bold mb-3">Unified Platform</h3>
-            <p className="text-gray-600">Manage billing, customer support, and service requests from a single app.</p>
+            <p className="text-[color:var(--cw-ink-soft)]">Manage billing, customer support, and service requests from a single app.</p>
           </div>
         </div>
       </main>
 
-      <footer className="py-8 text-center text-gray-500 text-sm border-t border-gray-200">
+      <footer className="py-8 text-center text-[color:var(--cw-ink-soft)] text-sm border-t border-[color:var(--cw-line)]">
         &copy; {new Date().getFullYear()} Cordova Waste. All rights reserved.
       </footer>
 
       {showAuthModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative">
+          <div className="cw-card p-8 w-full max-w-md shadow-2xl relative">
             <button
               onClick={() => setShowAuthModal(false)}
-              className="absolute top-6 right-6 text-gray-400 hover:text-gray-600"
+              className="absolute top-6 right-6 text-[color:var(--cw-ink-soft)]/60 hover:text-[color:var(--cw-ink-soft)]"
             >
               <X size={24} />
             </button>
 
-            <h2 className="text-2xl font-serif font-bold text-[#2d2d20] mb-6">
+            <h2 className="text-2xl font-serif font-bold italic text-[var(--cw-ink)] mb-6">
               {authMode === 'login' ? 'Welcome Back' : authMode === 'signup' ? 'Create Account' : 'Reset Password'}
             </h2>
 
-            {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</div>}
-            {message && <div className="mb-4 p-3 bg-green-50 text-green-600 rounded-xl text-sm">{message}</div>}
+            {error && <div className="mb-4 cw-alert cw-alert-danger">{error}</div>}
+            {message && <div className="mb-4 cw-alert cw-alert-success">{message}</div>}
 
             <form onSubmit={handleAuthSubmit} className="space-y-4">
               {authMode === 'signup' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                  <label className="block text-sm font-medium text-[color:var(--cw-ink-soft)] mb-1">Full Name</label>
                   <input
                     type="text"
                     required
                     value={name}
                     onChange={(event) => setName(event.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] outline-none"
+                    className="cw-input"
                     placeholder="John Doe"
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <label className="block text-sm font-medium text-[color:var(--cw-ink-soft)] mb-1">Email Address</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[color:var(--cw-ink-soft)]/55 pointer-events-none" size={20} />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
-                    className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-[#5A5A40] outline-none"
+                    className="cw-input cw-input-icon"
                     placeholder="you@example.com"
                   />
                 </div>
@@ -188,15 +228,15 @@ export default function Landing() {
 
               {authMode !== 'reset' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <label className="block text-sm font-medium text-[color:var(--cw-ink-soft)] mb-1">Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[color:var(--cw-ink-soft)]/55 pointer-events-none" size={20} />
                     <input
                       type="password"
                       required
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
-                      className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-[#5A5A40] outline-none"
+                      className="cw-input cw-input-icon"
                       placeholder="••••••••"
                     />
                   </div>
@@ -206,7 +246,7 @@ export default function Landing() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-[#5A5A40] text-white rounded-xl font-medium hover:bg-[#4a4a35] transition-colors disabled:opacity-50"
+                className="cw-btn cw-btn-primary w-full"
               >
                 {loading ? 'Please wait...' : authMode === 'login' ? 'Sign In' : authMode === 'signup' ? 'Create Account' : 'Send Reset Link'}
               </button>
@@ -214,17 +254,17 @@ export default function Landing() {
 
             <div className="mt-6 relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200"></div>
+                <div className="w-full border-t border-[color:var(--cw-line)]"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                <span className="px-2 bg-white text-[color:var(--cw-ink-soft)]">Or continue with</span>
               </div>
             </div>
 
             <button
               onClick={handleGoogleLogin}
               type="button"
-              className="mt-6 w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="mt-6 cw-btn cw-btn-secondary w-full"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -235,22 +275,22 @@ export default function Landing() {
               Google
             </button>
 
-            <div className="mt-6 text-center text-sm text-gray-600">
+            <div className="mt-6 text-center text-sm text-[color:var(--cw-ink-soft)]">
               {authMode === 'login' ? (
                 <>
                   Don&apos;t have an account?{' '}
-                  <button onClick={() => setAuthMode('signup')} className="text-[#5A5A40] font-medium hover:underline">
+                  <button onClick={() => setAuthMode('signup')} className="cw-link">
                     Sign up
                   </button>
                   <br />
-                  <button onClick={() => setAuthMode('reset')} className="text-[#5A5A40] font-medium hover:underline mt-2">
+                  <button onClick={() => setAuthMode('reset')} className="cw-link mt-2">
                     Forgot password?
                   </button>
                 </>
               ) : (
                 <>
                   Already have an account?{' '}
-                  <button onClick={() => setAuthMode('login')} className="text-[#5A5A40] font-medium hover:underline">
+                  <button onClick={() => setAuthMode('login')} className="cw-link">
                     Sign in
                   </button>
                 </>

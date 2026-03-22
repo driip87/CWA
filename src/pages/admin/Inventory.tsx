@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, getDocs, query, orderBy, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { Box, Truck, Wrench, Search, Plus, AlertTriangle, MapPin, UserCheck, X } from 'lucide-react';
+import { Box, Truck, Wrench, Search, Plus, MapPin, UserCheck, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuth } from '../../contexts/AuthContext';
+import { DEFAULT_TENANT_ID } from '../../shared/unified';
 
 export default function AdminInventory() {
+  const { userData } = useAuth();
+  const currentTenantId = userData?.tenantId || DEFAULT_TENANT_ID;
   const [inventory, setInventory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -15,12 +19,16 @@ export default function AdminInventory() {
   useEffect(() => {
     fetchInventory();
     fetchUsers();
-  }, []);
+  }, [currentTenantId]);
 
   const fetchUsers = async () => {
     try {
       const usersSnap = await getDocs(collection(db, 'users'));
-      setUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setUsers(
+        usersSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter((user: any) => (user.tenantId || DEFAULT_TENANT_ID) === currentTenantId),
+      );
     } catch (error) {
       console.error("Error fetching users", error);
     }
@@ -30,7 +38,11 @@ export default function AdminInventory() {
     try {
       const q = query(collection(db, 'inventory'), orderBy('lastUpdated', 'desc'));
       const querySnapshot = await getDocs(q);
-      setInventory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setInventory(
+        querySnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter((item: any) => (item.tenantId || DEFAULT_TENANT_ID) === currentTenantId),
+      );
     } catch (error) {
       console.error("Error fetching inventory", error);
     } finally {
@@ -42,6 +54,7 @@ export default function AdminInventory() {
     e.preventDefault();
     try {
       await addDoc(collection(db, 'inventory'), {
+        tenantId: userData?.tenantId || DEFAULT_TENANT_ID,
         ...newItem,
         lastUpdated: new Date().toISOString()
       });
@@ -67,85 +80,88 @@ export default function AdminInventory() {
     item.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (loading) return <div className="text-[#141414]/50 font-mono">Loading inventory...</div>;
+  if (loading) return <div className="cw-empty font-mono">Loading inventory...</div>;
 
   return (
-    <div className="space-y-6 relative">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-serif italic text-[#141414]">Asset Tracking & Allocation</h1>
+    <div className="cw-page relative">
+      <div className="cw-page-header">
+        <div>
+          <p className="cw-kicker">Assets</p>
+          <h1 className="cw-page-title mt-3">Asset Tracking & Allocation</h1>
+        </div>
         <div className="flex gap-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#141414]/40" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--cw-ink-soft)]/55" size={18} />
             <input 
               type="text" 
               placeholder="Search assets..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-white border border-[#141414]/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6b8e6b] w-64"
+              className="cw-input cw-input-icon w-64"
             />
           </div>
-          <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-[#6b8e6b] text-[#141414] rounded-lg font-semibold hover:bg-[#5a7a5a] transition-colors flex items-center gap-2">
+          <button onClick={() => setShowModal(true)} className="cw-btn cw-btn-primary">
             <Plus size={18} /> Add Asset
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10 flex items-center justify-between">
+        <div className="cw-card p-6 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-[#141414]/50 uppercase tracking-wider">Total Bins</p>
+            <p className="text-sm font-medium text-[color:var(--cw-ink-soft)] uppercase tracking-wider">Total Bins</p>
             <p className="text-2xl font-serif italic mt-1">{inventory.filter(i => i.type === 'bin').length}</p>
           </div>
-          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
+          <div className="cw-icon-chip">
             <Box size={24} />
           </div>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10 flex items-center justify-between">
+        <div className="cw-card p-6 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-[#141414]/50 uppercase tracking-wider">Active Vehicles</p>
+            <p className="text-sm font-medium text-[color:var(--cw-ink-soft)] uppercase tracking-wider">Active Vehicles</p>
             <p className="text-2xl font-serif italic mt-1">{inventory.filter(i => i.type === 'vehicle' && i.status === 'active').length}</p>
           </div>
-          <div className="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center">
+          <div className="cw-icon-chip cw-icon-chip-accent">
             <Truck size={24} />
           </div>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10 flex items-center justify-between">
+        <div className="cw-card p-6 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-[#141414]/50 uppercase tracking-wider">In Maintenance</p>
+            <p className="text-sm font-medium text-[color:var(--cw-ink-soft)] uppercase tracking-wider">In Maintenance</p>
             <p className="text-2xl font-serif italic mt-1">{inventory.filter(i => i.status === 'maintenance').length}</p>
           </div>
-          <div className="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-full flex items-center justify-center">
+          <div className="cw-icon-chip text-[#8f6d38] bg-[rgba(176,137,77,0.12)]">
             <Wrench size={24} />
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-[#141414]/10 overflow-hidden">
+      <div className="cw-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-[#E4E3E0]/50 border-b border-[#141414]/10">
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Asset ID</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Type</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Status</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Location & Coordinates</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Assignment</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50 text-right">Actions</th>
+              <tr className="bg-[rgba(236,233,223,0.58)] border-b border-[color:var(--cw-line)]">
+                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Asset ID</th>
+                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Type</th>
+                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Status</th>
+                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Location & Coordinates</th>
+                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Assignment</th>
+                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)] text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#141414]/5">
+            <tbody className="divide-y divide-[rgba(45,45,32,0.06)]">
               {filteredInventory.length > 0 ? filteredInventory.map(item => (
-                <tr key={item.id} className="hover:bg-[#E4E3E0]/20 transition-colors group">
+                <tr key={item.id} className="hover:bg-[rgba(236,233,223,0.32)] transition-colors group">
                   <td className="px-6 py-4">
-                    <span className="text-sm font-mono text-[#141414] bg-[#141414]/5 px-2 py-1 rounded">
+                    <span className="text-sm font-mono text-[var(--cw-ink)] bg-[rgba(45,45,32,0.05)] px-2 py-1 rounded">
                       {item.id.substring(0, 8).toUpperCase()}
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-[#141414]">
-                      {item.type === 'bin' && <Box size={16} className="text-blue-600" />}
-                      {item.type === 'vehicle' && <Truck size={16} className="text-green-600" />}
-                      {item.type === 'equipment' && <Wrench size={16} className="text-purple-600" />}
+                    <div className="flex items-center gap-2 text-[var(--cw-ink)]">
+                      {item.type === 'bin' && <Box size={16} className="text-[var(--cw-primary)]" />}
+                      {item.type === 'vehicle' && <Truck size={16} className="text-[var(--cw-accent)]" />}
+                      {item.type === 'equipment' && <Wrench size={16} className="text-[#8f6d38]" />}
                       <span className="capitalize font-medium">{item.type}</span>
                     </div>
                   </td>
@@ -153,9 +169,9 @@ export default function AdminInventory() {
                     <select 
                       value={item.status}
                       onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                      className={`text-xs font-medium uppercase tracking-wider rounded-full px-2.5 py-1 border-none focus:ring-2 focus:ring-[#6b8e6b] ${
-                        item.status === 'active' ? 'bg-green-100 text-green-700' :
-                        item.status === 'maintenance' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                      className={`text-xs font-medium uppercase tracking-wider rounded-full px-2.5 py-1 border-none focus:ring-2 focus:ring-[rgba(107,142,107,0.25)] ${
+                        item.status === 'active' ? 'bg-[rgba(107,142,107,0.16)] text-[#557455]' :
+                        item.status === 'maintenance' ? 'bg-[rgba(176,137,77,0.12)] text-[#8f6d38]' : 'bg-[rgba(182,73,73,0.12)] text-[var(--cw-danger)]'
                       }`}
                     >
                       <option value="active">Active</option>
@@ -164,28 +180,28 @@ export default function AdminInventory() {
                     </select>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-[#141414]/70 flex flex-col gap-1">
-                      <div className="flex items-center gap-1"><MapPin size={14} className="text-[#141414]/40" /> <span className="font-medium text-[#141414]">{item.location || 'Warehouse A'}</span></div>
-                      {item.coordinates && <div className="text-xs font-mono text-[#141414]/50 ml-5">{item.coordinates}</div>}
+                    <div className="text-sm text-[color:var(--cw-ink-soft)] flex flex-col gap-1">
+                      <div className="flex items-center gap-1"><MapPin size={14} className="text-[color:var(--cw-ink-soft)]/55" /> <span className="font-medium text-[var(--cw-ink)]">{item.location || 'Warehouse A'}</span></div>
+                      {item.coordinates && <div className="text-xs font-mono text-[color:var(--cw-ink-soft)] ml-5">{item.coordinates}</div>}
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     {item.assignedTo ? (
-                      <div className="flex items-center gap-1.5 text-sm text-[#141414]/70">
-                        <UserCheck size={14} className="text-green-600" />
+                      <div className="flex items-center gap-1.5 text-sm text-[color:var(--cw-ink-soft)]">
+                        <UserCheck size={14} className="text-[var(--cw-accent)]" />
                         <span className="font-medium">{users.find(u => u.id === item.assignedTo)?.name || item.assignedTo}</span>
                       </div>
                     ) : (
-                      <span className="text-xs text-[#141414]/40 italic">Unassigned</span>
+                      <span className="text-xs text-[color:var(--cw-ink-soft)] italic">Unassigned</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right text-sm text-[#141414]/70 font-mono">
+                  <td className="px-6 py-4 text-right text-sm text-[color:var(--cw-ink-soft)] font-mono">
                     {format(new Date(item.lastUpdated), 'MMM d, h:mm a')}
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-[#141414]/50 font-mono">
+                  <td colSpan={6} className="px-6 py-8 cw-empty font-mono">
                     No inventory items found.
                   </td>
                 </tr>
@@ -197,17 +213,17 @@ export default function AdminInventory() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+          <div className="cw-card p-6 w-full max-w-md shadow-2xl">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-serif italic text-[#141414]">Add New Asset</h2>
-              <button onClick={() => setShowModal(false)} className="text-[#141414]/50 hover:text-[#141414]"><X size={20} /></button>
+              <h2 className="text-xl font-serif italic text-[var(--cw-ink)]">Add New Asset</h2>
+              <button onClick={() => setShowModal(false)} className="text-[color:var(--cw-ink-soft)] hover:text-[var(--cw-ink)]"><X size={20} /></button>
             </div>
             <form onSubmit={handleAddAsset} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#141414]/70 mb-1">Asset Type</label>
+                <label className="block text-sm font-medium text-[color:var(--cw-ink-soft)] mb-1">Asset Type</label>
                 <select 
                   value={newItem.type} onChange={e => setNewItem({...newItem, type: e.target.value})}
-                  className="w-full border border-[#141414]/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#6b8e6b] outline-none"
+                  className="cw-select"
                 >
                   <option value="bin">Bin</option>
                   <option value="vehicle">Vehicle</option>
@@ -215,27 +231,27 @@ export default function AdminInventory() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#141414]/70 mb-1">Location Name</label>
+                <label className="block text-sm font-medium text-[color:var(--cw-ink-soft)] mb-1">Location Name</label>
                 <input 
                   type="text" required value={newItem.location} onChange={e => setNewItem({...newItem, location: e.target.value})}
-                  className="w-full border border-[#141414]/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#6b8e6b] outline-none"
+                  className="cw-input"
                   placeholder="e.g. North Route, Warehouse B"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#141414]/70 mb-1">GPS Coordinates (Optional)</label>
+                <label className="block text-sm font-medium text-[color:var(--cw-ink-soft)] mb-1">GPS Coordinates (Optional)</label>
                 <input 
                   type="text" value={newItem.coordinates} onChange={e => setNewItem({...newItem, coordinates: e.target.value})}
-                  className="w-full border border-[#141414]/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#6b8e6b] outline-none font-mono text-sm"
+                  className="cw-input font-mono text-sm"
                   placeholder="e.g. 34.0522, -118.2437"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#141414]/70 mb-1">Assign To (Optional)</label>
+                <label className="block text-sm font-medium text-[color:var(--cw-ink-soft)] mb-1">Assign To (Optional)</label>
                 <select 
                   value={newItem.assignedTo} 
                   onChange={e => setNewItem({...newItem, assignedTo: e.target.value})}
-                  className="w-full border border-[#141414]/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#6b8e6b] outline-none text-sm"
+                  className="cw-select text-sm"
                 >
                   <option value="">Unassigned</option>
                   {users.map(u => (
@@ -244,8 +260,8 @@ export default function AdminInventory() {
                 </select>
               </div>
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-2 border border-[#141414]/20 rounded-lg font-medium text-[#141414]/70 hover:bg-[#141414]/5">Cancel</button>
-                <button type="submit" className="flex-1 py-2 bg-[#6b8e6b] rounded-lg font-medium text-[#141414] hover:bg-[#5a7a5a]">Save Asset</button>
+                <button type="button" onClick={() => setShowModal(false)} className="cw-btn cw-btn-secondary flex-1">Cancel</button>
+                <button type="submit" className="cw-btn cw-btn-primary flex-1">Save Asset</button>
               </div>
             </form>
           </div>

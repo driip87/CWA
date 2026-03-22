@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { AlertCircle, CheckCircle2, Download, Map, Upload, Users, Truck } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { apiAuthedPost } from '../../lib/api';
+import { AlertCircle, CheckCircle2, Download, Map, RefreshCw, Upload, Users, Truck } from 'lucide-react';
+import { apiAuthedGet, apiAuthedPost } from '../../lib/api';
 
 interface ImportResult {
   batchId: string;
@@ -16,33 +14,45 @@ interface ImportResult {
   };
 }
 
+interface RouteView {
+  id: string;
+  name: string;
+  serviceDay: string;
+  stopCount: number;
+  sourceLabel: string;
+  run: { serviceDate: string; status: string } | null;
+  vehicle: { name: string | null; status: string | null } | null;
+  stops: Array<{
+    id: string;
+    sequence: number;
+    customerName: string;
+    address: string;
+    status: string;
+    binLocation: string;
+  }>;
+}
+
 export default function AdminRoutes() {
-  const [customers, setCustomers] = useState<any[]>([]);
+  const [routes, setRoutes] = useState<RouteView[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-  const fetchCustomers = async () => {
+  const fetchRoutes = async () => {
     setLoading(true);
     try {
-      const snapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'user')));
-      setCustomers(
-        snapshot.docs
-          .map((doc) => ({ id: doc.id, ...doc.data() }))
-          .filter((customer: any) => customer.recordStatus !== 'archived'),
-      );
+      const payload = await apiAuthedGet<{ routes: RouteView[] }>('/api/admin/domain/routes');
+      setRoutes(payload.routes);
     } catch (error) {
-      console.error('Error fetching customers:', error);
+      console.error('Error fetching routes', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCustomers();
+    void fetchRoutes();
   }, []);
 
   const downloadTemplate = () => {
@@ -67,7 +77,7 @@ export default function AdminRoutes() {
       const csvText = await file.text();
       const result = await apiAuthedPost<ImportResult>('/api/admin/import-customers', { csvText });
       setImportResult(result);
-      await fetchCustomers();
+      await fetchRoutes();
     } catch (error) {
       console.error('Import failed:', error);
       alert(error instanceof Error ? error.message : 'Import failed');
@@ -79,22 +89,27 @@ export default function AdminRoutes() {
     }
   };
 
-  const customersByDay = days.reduce((acc, day) => {
-    acc[day] = customers.filter((customer) => customer.collectionDay === day || (!customer.collectionDay && day === 'Monday'));
-    return acc;
-  }, {} as Record<string, any[]>);
-
   return (
-    <div className="space-y-8">
-      <header className="flex justify-between items-start">
+    <div className="cw-page">
+      <header className="cw-page-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Route Management</h1>
-          <p className="text-gray-500 mt-2">Manage collection routes and import existing customer lists.</p>
+          <p className="cw-kicker">Routes</p>
+          <h1 className="cw-page-title mt-3">Route Management</h1>
+          <p className="cw-page-copy">
+            Review synced routes, onboard customers with imports, and keep service planning aligned across your operation.
+          </p>
         </div>
         <div className="flex gap-3">
           <button
+            onClick={() => void fetchRoutes()}
+            className="cw-btn cw-btn-secondary"
+          >
+            <RefreshCw size={18} />
+            Refresh
+          </button>
+          <button
             onClick={downloadTemplate}
-            className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm"
+            className="cw-btn cw-btn-secondary"
           >
             <Download size={18} />
             CSV Template
@@ -103,17 +118,17 @@ export default function AdminRoutes() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={importing}
-            className="px-4 py-2 bg-[#6b8e6b] text-white rounded-xl font-medium hover:bg-[#5a7a5a] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+            className="cw-btn cw-btn-primary"
           >
             {importing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Upload size={18} />}
-            {importing ? 'Importing...' : 'Bulk Import Routes'}
+            {importing ? 'Importing...' : 'Import Customers'}
           </button>
         </div>
       </header>
 
       {importResult && (
         <div
-          className={`p-4 rounded-xl border flex items-start gap-3 ${
+          className={`p-4 rounded-3xl border flex items-start gap-3 ${
             importResult.summary.needsReview > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'
           }`}
         >
@@ -134,81 +149,99 @@ export default function AdminRoutes() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-[#141414] text-white rounded-2xl p-6 shadow-xl">
+          <div className="cw-card-dark p-6">
             <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4">
               <Map className="text-white" size={24} />
             </div>
-            <h2 className="text-xl font-bold mb-2">Transitioning Made Easy</h2>
+            <h2 className="text-xl font-bold mb-2">Routing Snapshot</h2>
             <p className="text-white/70 text-sm mb-6">
-              Imports now normalize customer data, generate claim invites, and route ambiguous matches into review instead of creating blind duplicates.
+              Stops, service dates, vehicle assignments, and status updates are organized into one view before they reach the operations team.
             </p>
             <ul className="space-y-3 text-sm text-white/80">
               <li className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-[#6b8e6b]" /> Unique matches are updated in place
+                <CheckCircle2 size={16} className="text-[#6b8e6b]" /> Imported and connected route data rolls into one shared schedule
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-[#6b8e6b]" /> New imports get invite or missing-email status
+                <CheckCircle2 size={16} className="text-[#6b8e6b]" /> Stop sequencing, run dates, and vehicle context stay visible in one place
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-[#6b8e6b]" /> Ambiguous records are routed for support review
+                <CheckCircle2 size={16} className="text-[#6b8e6b]" /> Customer imports can seed routes before a routing system is connected
               </li>
             </ul>
           </div>
         </div>
 
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="cw-card overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Truck size={20} className="text-[#6b8e6b]" />
-                Route Overview
-              </h2>
+              <div>
+                <h2 className="cw-section-title flex items-center gap-2">
+                  <Truck size={20} className="text-[#6b8e6b]" />
+                  Route Overview
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">Synced route schedules with stop sequencing and vehicle context.</p>
+              </div>
+              <span className="cw-badge cw-badge-muted">Synced Routes</span>
             </div>
 
             {loading ? (
               <div className="p-12 text-center text-gray-500">Loading routes...</div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {days.map((day) => {
-                  const dayCustomers = customersByDay[day] || [];
-                  if (dayCustomers.length === 0) return null;
-
-                  return (
-                    <div key={day} className="p-6">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-lg text-gray-900">{day} Route</h3>
-                        <span className="bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">{dayCustomers.length} Stops</span>
+                {routes.map((route) => (
+                  <div key={route.id} className="p-6">
+                    <div className="flex justify-between items-center mb-4 gap-4">
+                      <div>
+                        <h3 className="font-bold text-lg text-gray-900">{route.name}</h3>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {route.serviceDay} • {route.run ? new Date(route.run.serviceDate).toLocaleDateString() : 'No scheduled run'}
+                          {route.vehicle?.name ? ` • ${route.vehicle.name}` : ''}
+                        </p>
                       </div>
-                      <div className="space-y-3">
-                        {dayCustomers.map((customer) => (
-                          <div
-                            key={customer.id}
-                            className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl border border-transparent hover:border-gray-100 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
-                                <Users size={14} />
-                              </div>
-                              <div>
-                                <p className="font-medium text-gray-900 text-sm">{customer.name || customer.email}</p>
-                                <p className="text-xs text-gray-500">{customer.address || 'No address provided'}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-xs font-medium text-gray-500">{customer.plan || 'Standard'}</span>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="flex gap-2">
+                        <span className="bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">{route.stopCount} Stops</span>
+                        <span className="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1 rounded-full">{route.sourceLabel}</span>
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="space-y-3">
+                      {route.stops.map((stop) => (
+                        <div
+                          key={stop.id}
+                          className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl border border-transparent hover:border-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
+                              <Users size={14} />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">
+                                #{stop.sequence} {stop.customerName}
+                              </p>
+                              <p className="text-xs text-gray-500">{stop.address || stop.binLocation}</p>
+                            </div>
+                          </div>
+                          <span
+                            className={`text-xs font-bold px-3 py-1 rounded-full ${
+                              stop.status === 'completed'
+                                ? 'bg-green-100 text-green-700'
+                                : stop.status === 'missed'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {stop.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
 
-                {customers.length === 0 && (
+                {routes.length === 0 && (
                   <div className="p-12 text-center">
                     <Map className="mx-auto text-gray-300 mb-3" size={48} />
-                    <p className="text-gray-500 font-medium">No routes configured yet.</p>
-                    <p className="text-sm text-gray-400 mt-1">Import your existing customer list to generate routes.</p>
+                    <p className="text-gray-500 font-medium">No routes found.</p>
+                    <p className="text-sm text-gray-400 mt-1">Connect a routing system or import customers to start building your schedule.</p>
                   </div>
                 )}
               </div>

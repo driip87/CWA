@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { Resend } from 'resend';
-import { adminDb } from './firebaseAdmin';
+import { adminAuth, adminDb } from './firebaseAdmin';
+import { DEFAULT_TENANT_ID } from '../shared/unified';
 import {
   type ClaimStatus,
   type CustomerProfile,
@@ -13,11 +14,13 @@ import {
   normalizePhone,
   parseCsv,
 } from '../shared/customer';
+import { mergeCustomerIntoCanonicalTarget } from './customerMerge';
 
 const INVITE_TTL_DAYS = 7;
 const ADMIN_EMAIL = 'kereeonmiller@gmail.com';
 
 export interface AccountRecord {
+  tenantId: string;
   email: string;
   role: 'user' | 'admin';
   customerId: string | null;
@@ -76,6 +79,7 @@ function sanitizeCustomer(customerId: string, raw?: FirebaseFirestore.DocumentDa
 
   const customer: CustomerProfile = {
     id: customerId,
+    tenantId: raw.tenantId || DEFAULT_TENANT_ID,
     ...raw,
     claimStatus: raw.claimStatus || inferClaimStatus(raw),
     normalizedEmail: raw.normalizedEmail || normalizeEmail(raw.email),
@@ -190,6 +194,7 @@ function requiresEmailVerification(decodedToken: DecodedIdToken, providerIds: st
 function buildAccountRecord(decodedToken: DecodedIdToken, customer: CustomerProfile, providerIds: string[]): AccountRecord {
   const timestamp = nowIso();
   return {
+    tenantId: customer.tenantId || DEFAULT_TENANT_ID,
     email: decodedToken.email || '',
     role: customer.role || 'user',
     customerId: customer.id || null,
@@ -237,6 +242,49 @@ async function finalizePendingCustomerClaim(customer: CustomerProfile, uid: stri
   }
 
   await adminDb.collection('users').doc(customer.id!).update(updates);
+}
+
+async function resetPendingVerificationState(customer: CustomerProfile) {
+  const pendingUid = customer.pendingLinkedAuthUid;
+  if (!pendingUid) {
+    return;
+  }
+
+  try {
+    await adminAuth.getUser(pendingUid);
+    await adminAuth.deleteUser(pendingUid);
+  } catch (error: any) {
+    if (error?.code !== 'auth/user-not-found') {
+      throw error;
+    }
+  }
+
+  await adminDb.collection('accounts').doc(pendingUid).delete();
+
+  const resetPayload: Record<string, unknown> = {
+    pendingLinkedAuthUid: null,
+    linkedAuthUid: null,
+    claimStatus: customer.email ? 'not_invited' : 'missing_email',
+    latestInviteId: null,
+    latestInviteSentAt: null,
+    latestInviteExpiresAt: null,
+  };
+
+  if (customer.latestInviteId) {
+    const inviteRef = adminDb.collection('claimInvites').doc(customer.latestInviteId);
+    const inviteSnap = await inviteRef.get();
+    if (inviteSnap.exists) {
+      await inviteRef.set(
+        {
+          status: 'revoked',
+          claimedAt: null,
+        },
+        { merge: true },
+      );
+    }
+  }
+
+  await adminDb.collection('users').doc(customer.id!).update(resetPayload);
 }
 
 export async function createInviteForCustomer(customerId: string, sentBy: string | null) {
@@ -301,6 +349,23 @@ export async function createInviteForCustomer(customerId: string, sentBy: string
   };
 }
 
+export async function resendInviteForCustomer(customerId: string, sentBy: string | null) {
+  const customer = await getCustomerById(customerId);
+  if (!customer) {
+    throw new Error('Customer not found');
+  }
+
+  if (customer.linkedAuthUid) {
+    throw new Error('Customer is already linked to an account');
+  }
+
+  if (customer.pendingLinkedAuthUid || customer.claimStatus === 'pending_verification') {
+    await resetPendingVerificationState(customer);
+  }
+
+  return createInviteForCustomer(customerId, sentBy);
+}
+
 async function upsertAccount(uid: string, account: AccountRecord) {
   await adminDb.collection('accounts').doc(uid).set(account, { merge: true });
 }
@@ -322,14 +387,16 @@ async function findUniqueImportedCustomerByEmail(email: string) {
   return matches.length === 1 ? matches[0]! : null;
 }
 
-async function createCustomerForSignup(decodedToken: DecodedIdToken) {
+async function createCustomerForSignup(decodedToken: DecodedIdToken, profileName?: string | null) {
   const createdAt = nowIso();
   const email = decodedToken.email || '';
   const role = isAdminEmail(email) ? 'admin' : 'user';
+  const resolvedName = profileName?.trim() || decodedToken.name || '';
 
   const customerPatch = normalizeCustomerPatch({
     email,
-    name: decodedToken.name || '',
+    name: resolvedName,
+    tenantId: DEFAULT_TENANT_ID,
     role,
     createdAt,
     subscriptionStatus: role === 'admin' ? 'active' : 'inactive',
@@ -352,7 +419,11 @@ async function createCustomerForSignup(decodedToken: DecodedIdToken) {
   return sanitizeCustomer(docRef.id, customerPatch);
 }
 
-export async function bootstrapAuthSession(decodedToken: DecodedIdToken, claimToken?: string | null) {
+export async function bootstrapAuthSession(
+  decodedToken: DecodedIdToken,
+  claimToken?: string | null,
+  profileName?: string | null,
+) {
   const uid = decodedToken.uid;
   const email = normalizeEmail(decodedToken.email);
   const providerIds = providersFromToken(decodedToken);
@@ -409,8 +480,9 @@ export async function bootstrapAuthSession(decodedToken: DecodedIdToken, claimTo
 
         customer = await getCustomerById(matchedImportedCustomer.id!);
       } else {
-        customer = await createCustomerForSignup(decodedToken);
+        customer = await createCustomerForSignup(decodedToken, profileName);
         account = {
+          tenantId: customer.tenantId || DEFAULT_TENANT_ID,
           email: decodedToken.email || '',
           role: customer.role || 'user',
           customerId: customer.id || null,
@@ -437,6 +509,13 @@ export async function bootstrapAuthSession(decodedToken: DecodedIdToken, claimTo
 
   if (!customer && account.customerId) {
     customer = await getCustomerById(account.customerId);
+  }
+
+  if (customer?.id && profileName?.trim() && !customer.name?.trim()) {
+    await adminDb.collection('users').doc(customer.id).update({
+      name: profileName.trim(),
+    });
+    customer = await getCustomerById(customer.id);
   }
 
   if (
@@ -484,7 +563,8 @@ export async function revokeInvite(customerId: string) {
     throw new Error('Customer not found');
   }
   if (customer.pendingLinkedAuthUid || customer.claimStatus === 'pending_verification') {
-    throw new Error('Customer is awaiting email verification');
+    await resetPendingVerificationState(customer);
+    return;
   }
   if (!customer.latestInviteId) {
     throw new Error('Customer has no invite to revoke');
@@ -497,20 +577,6 @@ export async function revokeInvite(customerId: string) {
     latestInviteId: null,
     latestInviteSentAt: null,
     latestInviteExpiresAt: null,
-  });
-}
-
-function mergeCustomerData(source: CustomerProfile, target: CustomerProfile) {
-  return normalizeCustomerPatch({
-    phone: target.phone || source.phone || '',
-    address: target.address || source.address || '',
-    plan: source.plan || target.plan || '',
-    collectionDay: source.collectionDay || target.collectionDay || '',
-    subscriptionStatus:
-      source.subscriptionStatus === 'active' || target.subscriptionStatus === 'active' ? 'active' : 'inactive',
-    imported: Boolean(target.imported || source.imported),
-    importSource: target.importSource || source.importSource || null,
-    importBatchId: target.importBatchId || source.importBatchId || null,
   });
 }
 
@@ -542,19 +608,33 @@ export async function resolveCustomerConflict(sourceCustomerId: string, mode: 's
     throw new Error('Target customer is required');
   }
 
+  if (source.linkedAuthUid || source.pendingLinkedAuthUid) {
+    throw new Error('Linked or verification-pending customers cannot be merged into another profile');
+  }
+
   const target = await getCustomerById(targetCustomerId);
   if (!target) {
     throw new Error('Target customer not found');
+  }
+  if (target.recordStatus === 'archived') {
+    throw new Error('Archived customers cannot be merge targets');
+  }
+  if (source.id === target.id) {
+    throw new Error('Source and target customer must be different');
+  }
+  if (source.linkedAuthUid || source.pendingLinkedAuthUid) {
+    throw new Error('Linked customers must be resolved without merging into another profile');
   }
 
   await revokePendingInvites(sourceCustomerId);
 
   await adminDb.runTransaction(async (transaction) => {
-    transaction.update(adminDb.collection('users').doc(targetCustomerId), mergeCustomerData(source, target));
+    transaction.update(adminDb.collection('users').doc(targetCustomerId), mergeCustomerIntoCanonicalTarget(source, target));
     transaction.update(adminDb.collection('users').doc(sourceCustomerId), {
       recordStatus: 'archived',
       claimStatus: 'conflict',
       mergedIntoCustomerId: targetCustomerId,
+      pendingLinkedAuthUid: null,
       latestInviteId: null,
       latestInviteSentAt: null,
       latestInviteExpiresAt: null,
@@ -584,6 +664,7 @@ export async function importLegacyCustomers(csvText: string, adminUid: string) {
       email: row.email,
       phone: row.phone,
       address: row.address,
+      tenantId: DEFAULT_TENANT_ID,
       role: 'user' as const,
       createdAt: nowIso(),
       subscriptionStatus: 'active' as const,
@@ -708,6 +789,7 @@ export async function backfillCustomerStatuses() {
         normalizedEmail: normalizeEmail(customer.email),
         normalizedPhone: normalizePhone(customer.phone),
         normalizedAddress: normalizeAddress(customer.address),
+        tenantId: customer.tenantId || DEFAULT_TENANT_ID,
         claimStatus: customer.claimStatus || inferClaimStatus(customer),
         linkedAuthUid: customer.linkedAuthUid || raw.uid || null,
         pendingLinkedAuthUid: customer.pendingLinkedAuthUid || null,

@@ -39,6 +39,143 @@ service cloud.firestore {
       ]);
     }
 
+    function isNullableString(value) {
+      return value == null || value is string;
+    }
+
+    function isNumber(value) {
+      return value is int || value is float;
+    }
+
+    function userProfileChangedKeys() {
+      return request.resource.data.diff(resource.data).changedKeys();
+    }
+
+    function updatesPhoneNormalizationTogether() {
+      return userProfileChangedKeys().hasAny(['phone']) == userProfileChangedKeys().hasAny(['normalizedPhone']);
+    }
+
+    function updatesAddressNormalizationTogether() {
+      return userProfileChangedKeys().hasAny(['address']) == userProfileChangedKeys().hasAny(['normalizedAddress']);
+    }
+
+    function isValidUserProfileUpdate() {
+      return userEditableFieldsOnly() &&
+        isNullableString(request.resource.data.name) &&
+        isNullableString(request.resource.data.phone) &&
+        isNullableString(request.resource.data.address) &&
+        isNullableString(request.resource.data.normalizedPhone) &&
+        isNullableString(request.resource.data.normalizedAddress) &&
+        updatesPhoneNormalizationTogether() &&
+        updatesAddressNormalizationTogether();
+    }
+
+    function isPickupStatus(value) {
+      return value == 'scheduled' || value == 'completed' || value == 'cancelled';
+    }
+
+    function isValidPickup() {
+      return request.resource.data.keys().hasOnly([
+          'userId',
+          'date',
+          'status',
+          'binLocation',
+          'createdAt'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'userId',
+          'date',
+          'status'
+        ]) &&
+        request.resource.data.userId is string &&
+        request.resource.data.date is string &&
+        isPickupStatus(request.resource.data.status) &&
+        isNullableString(request.resource.data.binLocation) &&
+        isNullableString(request.resource.data.createdAt);
+    }
+
+    function isValidPickupUpdate() {
+      return isValidPickup() &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isPaymentStatus(value) {
+      return value == 'pending' || value == 'paid';
+    }
+
+    function isValidPayment() {
+      return request.resource.data.keys().hasOnly([
+          'userId',
+          'amount',
+          'status',
+          'date',
+          'description'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'userId',
+          'amount',
+          'status',
+          'date',
+          'description'
+        ]) &&
+        request.resource.data.userId is string &&
+        isNumber(request.resource.data.amount) &&
+        isPaymentStatus(request.resource.data.status) &&
+        request.resource.data.date is string &&
+        request.resource.data.description is string;
+    }
+
+    function isValidPaymentUpdate() {
+      return isValidPayment() &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.amount == resource.data.amount &&
+        request.resource.data.date == resource.data.date &&
+        request.resource.data.description == resource.data.description &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'paid';
+    }
+
+    function isInteractionType(value) {
+      return value == 'note' || value == 'service_request';
+    }
+
+    function isInteractionStatus(value) {
+      return value == null || value == 'open' || value == 'resolved';
+    }
+
+    function isValidInteraction() {
+      return request.resource.data.keys().hasOnly([
+          'userId',
+          'type',
+          'content',
+          'date',
+          'authorId',
+          'status'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'userId',
+          'type',
+          'content',
+          'date',
+          'authorId'
+        ]) &&
+        request.resource.data.userId is string &&
+        isInteractionType(request.resource.data.type) &&
+        request.resource.data.content is string &&
+        request.resource.data.date is string &&
+        request.resource.data.authorId is string &&
+        isInteractionStatus(request.resource.data.status);
+    }
+
+    function isValidCustomerInteraction() {
+      return isValidInteraction() &&
+        request.resource.data.userId == linkedCustomerId() &&
+        request.resource.data.authorId == linkedCustomerId() &&
+        request.resource.data.type == 'service_request' &&
+        request.resource.data.status == 'open';
+    }
+
     match /accounts/{accountId} {
       allow read: if isAuthenticated() && (request.auth.uid == accountId || isAdmin());
       allow write: if false;
@@ -51,21 +188,21 @@ service cloud.firestore {
     match /users/{customerId} {
       allow read: if isLinkedCustomer(customerId) || isAdmin();
       allow create: if isAdmin();
-      allow update: if isAdmin() || (isLinkedCustomer(customerId) && userEditableFieldsOnly());
+      allow update: if isAdmin() || (isLinkedCustomer(customerId) && isValidUserProfileUpdate());
       allow delete: if isAdmin();
     }
 
     match /pickups/{pickupId} {
       allow read: if isAuthenticated() && (isLinkedCustomer(resource.data.userId) || isAdmin());
-      allow create: if isAuthenticated() && ((hasAccount() && request.resource.data.userId == linkedCustomerId()) || isAdmin());
-      allow update: if isAuthenticated() && ((hasAccount() && resource.data.userId == linkedCustomerId() && request.resource.data.userId == resource.data.userId) || isAdmin());
+      allow create: if isAuthenticated() && (isAdmin() || (hasAccount() && request.resource.data.userId == linkedCustomerId() && isValidPickup()));
+      allow update: if isAuthenticated() && (isAdmin() || (hasAccount() && resource.data.userId == linkedCustomerId() && isValidPickupUpdate()));
       allow delete: if isAdmin();
     }
 
     match /payments/{paymentId} {
       allow read: if isAuthenticated() && (isLinkedCustomer(resource.data.userId) || isAdmin());
-      allow create: if isAuthenticated() && ((hasAccount() && request.resource.data.userId == linkedCustomerId()) || isAdmin());
-      allow update: if isAdmin();
+      allow create: if isAuthenticated() && (isAdmin() || (hasAccount() && request.resource.data.userId == linkedCustomerId() && isValidPayment()));
+      allow update: if isAdmin() || (hasAccount() && resource.data.userId == linkedCustomerId() && isValidPaymentUpdate());
       allow delete: if isAdmin();
     }
 
@@ -82,8 +219,7 @@ service cloud.firestore {
       allow create: if isAdmin() || (
         isAuthenticated() &&
         hasAccount() &&
-        request.resource.data.userId == linkedCustomerId() &&
-        request.resource.data.authorId == linkedCustomerId()
+        isValidCustomerInteraction()
       );
       allow update, delete: if isAdmin();
     }

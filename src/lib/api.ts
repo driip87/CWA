@@ -22,6 +22,19 @@ export async function apiGet<T>(path: string): Promise<T> {
   return data;
 }
 
+export async function apiAuthedGet<T>(path: string): Promise<T> {
+  const response = await fetch(path, {
+    headers: await authHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Request failed');
+  }
+
+  return data;
+}
+
 export async function apiAuthedPost<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',

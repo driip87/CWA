@@ -1,34 +1,48 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, getDocs, query, updateDoc, where, doc } from 'firebase/firestore';
-import { Edit, Mail, MapPin, Phone, Search, ShieldAlert, UserRoundCheck, X } from 'lucide-react';
-import { format } from 'date-fns';
+import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
+import { Mail, MapPin, Phone, Search, ShieldAlert, UserRoundCheck } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { apiAuthedPost } from '../../lib/api';
+import { apiAuthedGet, apiAuthedPost } from '../../lib/api';
 import { normalizeAddress, normalizeEmail, normalizePhone, type ClaimStatus } from '../../shared/customer';
 import { useAuth } from '../../contexts/AuthContext';
+import { DEFAULT_TENANT_ID } from '../../shared/unified';
 
-const statusStyles: Record<ClaimStatus, string> = {
-  not_invited: 'bg-slate-100 text-slate-700',
-  invited: 'bg-blue-100 text-blue-700',
-  pending_verification: 'bg-violet-100 text-violet-700',
-  claimed: 'bg-green-100 text-green-700',
-  expired: 'bg-amber-100 text-amber-700',
-  revoked: 'bg-neutral-200 text-neutral-700',
-  needs_review: 'bg-red-100 text-red-700',
-  conflict: 'bg-red-100 text-red-700',
-  missing_email: 'bg-zinc-100 text-zinc-700',
+const statusStyles: Record<string, string> = {
+  not_invited: 'bg-[rgba(45,45,32,0.06)] text-[color:var(--cw-ink-soft)]',
+  invited: 'bg-[rgba(90,90,64,0.1)] text-[var(--cw-primary)]',
+  pending_verification: 'bg-[rgba(90,90,64,0.14)] text-[var(--cw-primary)]',
+  claimed: 'bg-[rgba(107,142,107,0.16)] text-[#557455]',
+  expired: 'bg-[rgba(176,137,77,0.12)] text-[#8f6d38]',
+  revoked: 'bg-[rgba(45,45,32,0.1)] text-[color:var(--cw-ink-soft)]',
+  needs_review: 'bg-[rgba(182,73,73,0.12)] text-[var(--cw-danger)]',
+  conflict: 'bg-[rgba(182,73,73,0.12)] text-[var(--cw-danger)]',
+  missing_email: 'bg-[rgba(45,45,32,0.06)] text-[color:var(--cw-ink-soft)]',
 };
 
-type CustomerRecord = any;
+interface CustomerRecord {
+  id: string;
+  legacyCustomerId: string | null;
+  displayName: string;
+  email: string;
+  phone: string;
+  address: string;
+  claimStatus: ClaimStatus | null;
+  plan: string;
+  collectionDay: string;
+  linkedAuthUid: string | null;
+  pendingLinkedAuthUid: string | null;
+  sourceLabel: string;
+  outstandingBalance: number;
+  paymentStatus: string;
+}
 
 function canSendInvite(customer: CustomerRecord) {
   const status = (customer.claimStatus || 'not_invited') as ClaimStatus;
-  return (
-    Boolean(customer.email) &&
-    !customer.linkedAuthUid &&
-    !customer.pendingLinkedAuthUid &&
-    ['not_invited', 'invited', 'expired', 'revoked'].includes(status)
-  );
+  return Boolean(customer.email) && !customer.linkedAuthUid && ['not_invited', 'invited', 'expired', 'revoked', 'pending_verification'].includes(status);
+}
+
+function canMergeCustomer(customer: CustomerRecord) {
+  return !customer.linkedAuthUid && !customer.pendingLinkedAuthUid;
 }
 
 export default function AdminCustomers() {
@@ -47,14 +61,11 @@ export default function AdminCustomers() {
   const fetchCustomers = async () => {
     setLoading(true);
     try {
-      const snapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'user')));
-      const records = snapshot.docs
-        .map((customerDoc) => ({ id: customerDoc.id, ...customerDoc.data() }))
-        .filter((customer: CustomerRecord) => customer.recordStatus !== 'archived');
-      setCustomers(records);
+      const payload = await apiAuthedGet<{ customers: CustomerRecord[] }>('/api/admin/domain/customers');
+      setCustomers(payload.customers);
 
       if (selectedCustomer) {
-        const refreshed = records.find((customer: CustomerRecord) => customer.id === selectedCustomer.id) || null;
+        const refreshed = payload.customers.find((customer) => customer.id === selectedCustomer.id) || null;
         setSelectedCustomer(refreshed);
       }
     } catch (error) {
@@ -65,16 +76,17 @@ export default function AdminCustomers() {
   };
 
   useEffect(() => {
-    fetchCustomers();
+    void fetchCustomers();
   }, []);
 
   const handleAddNote = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedCustomer || !noteContent.trim() || !userData) return;
+    if (!selectedCustomer?.legacyCustomerId || !noteContent.trim() || !userData) return;
 
     try {
       await addDoc(collection(db, 'interactions'), {
-        userId: selectedCustomer.id,
+        tenantId: userData.tenantId || DEFAULT_TENANT_ID,
+        userId: selectedCustomer.legacyCustomerId,
         type: 'note',
         content: noteContent,
         date: new Date().toISOString(),
@@ -88,9 +100,9 @@ export default function AdminCustomers() {
   };
 
   const handleSaveProfile = async () => {
-    if (!selectedCustomer) return;
+    if (!selectedCustomer?.legacyCustomerId) return;
     try {
-      await updateDoc(doc(db, 'users', selectedCustomer.id), {
+      await updateDoc(doc(db, 'users', selectedCustomer.legacyCustomerId), {
         name: editData.name,
         phone: editData.phone,
         address: editData.address,
@@ -107,9 +119,9 @@ export default function AdminCustomers() {
   };
 
   const handleResendInvite = async (customer = selectedCustomer) => {
-    if (!customer) return;
+    if (!customer?.legacyCustomerId) return;
     try {
-      const invite = await apiAuthedPost<{ claimLink: string }>('/api/admin/customers/' + customer.id + '/resend-invite');
+      const invite = await apiAuthedPost<{ claimLink: string }>(`/api/admin/customers/${customer.legacyCustomerId}/resend-invite`);
       await navigator.clipboard.writeText(invite.claimLink);
       setActionMessage('Invite resent and fresh claim link copied to clipboard.');
       await fetchCustomers();
@@ -119,9 +131,9 @@ export default function AdminCustomers() {
   };
 
   const handleRevokeInvite = async (customer = selectedCustomer) => {
-    if (!customer) return;
+    if (!customer?.legacyCustomerId) return;
     try {
-      await apiAuthedPost('/api/admin/customers/' + customer.id + '/revoke-invite');
+      await apiAuthedPost(`/api/admin/customers/${customer.legacyCustomerId}/revoke-invite`);
       setActionMessage('Invite revoked.');
       await fetchCustomers();
     } catch (error: any) {
@@ -130,9 +142,9 @@ export default function AdminCustomers() {
   };
 
   const handleResolveStandalone = async () => {
-    if (!selectedCustomer) return;
+    if (!selectedCustomer?.legacyCustomerId) return;
     try {
-      await apiAuthedPost('/api/admin/customers/' + selectedCustomer.id + '/resolve', { mode: 'standalone' });
+      await apiAuthedPost(`/api/admin/customers/${selectedCustomer.legacyCustomerId}/resolve`, { mode: 'standalone' });
       setActionMessage('Customer moved back into standalone invite flow.');
       await fetchCustomers();
     } catch (error: any) {
@@ -141,11 +153,12 @@ export default function AdminCustomers() {
   };
 
   const handleMergeIntoTarget = async () => {
-    if (!selectedCustomer || !targetCustomerId) return;
+    if (!selectedCustomer?.legacyCustomerId || !targetCustomerId) return;
     try {
-      await apiAuthedPost('/api/admin/customers/' + selectedCustomer.id + '/resolve', {
+      const target = customers.find((customer) => customer.id === targetCustomerId);
+      await apiAuthedPost(`/api/admin/customers/${selectedCustomer.legacyCustomerId}/resolve`, {
         mode: 'link_existing',
-        targetCustomerId,
+        targetCustomerId: target?.legacyCustomerId || targetCustomerId,
       });
       setTargetCustomerId('');
       setActionMessage('Customer merged into the selected operational profile.');
@@ -158,9 +171,9 @@ export default function AdminCustomers() {
 
   const filteredCustomers = customers.filter((customer) => {
     const matchesSearch =
-      customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.address?.toLowerCase().includes(searchTerm.toLowerCase());
+      customer.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.address.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' ? true : customer.claimStatus === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -173,7 +186,7 @@ export default function AdminCustomers() {
     const selectedAddress = normalizeAddress(selectedCustomer.address);
 
     return customers.filter((customer) => {
-      if (customer.id === selectedCustomer.id || customer.recordStatus === 'archived') return false;
+      if (customer.id === selectedCustomer.id) return false;
 
       const sameEmail = selectedEmail && normalizeEmail(customer.email) === selectedEmail;
       const samePhoneAndAddress =
@@ -191,26 +204,27 @@ export default function AdminCustomers() {
     setIsEditing(false);
     setActionMessage('');
     setEditData({
-      name: customer.name || '',
+      name: customer.displayName || '',
       phone: customer.phone || '',
       address: customer.address || '',
     });
   };
 
-  if (loading) return <div className="text-[#141414]/50 font-mono">Loading customers...</div>;
+  if (loading) return <div className="cw-empty font-mono">Loading customers...</div>;
 
   return (
-    <div className="space-y-6 relative">
-      <div className="flex justify-between items-center gap-4">
+    <div className="cw-page relative">
+      <div className="cw-page-header">
         <div>
-          <h1 className="text-2xl font-serif italic text-[#141414]">Customer Directory</h1>
-          <p className="text-sm text-[#141414]/60 mt-1">Support can now track invite and claim state directly on imported customer records.</p>
+          <p className="cw-kicker">Customers</p>
+          <h1 className="cw-page-title mt-3">Customer Directory</h1>
+          <p className="cw-page-copy">Manage customer profiles, service details, claims, and billing visibility from one workspace.</p>
         </div>
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as 'all' | ClaimStatus)}
-            className="px-3 py-2 bg-white border border-[#141414]/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6b8e6b]"
+            className="cw-select"
           >
             <option value="all">All statuses</option>
             <option value="invited">Invited</option>
@@ -224,251 +238,219 @@ export default function AdminCustomers() {
             <option value="not_invited">Not invited</option>
           </select>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#141414]/40" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--cw-ink-soft)]/55" size={18} />
             <input
               type="text"
               placeholder="Search customers..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="pl-10 pr-4 py-2 bg-white border border-[#141414]/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6b8e6b] w-72"
+              className="cw-input cw-input-icon w-72"
             />
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-[#141414]/10 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#E4E3E0]/50 border-b border-[#141414]/10">
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Customer</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Contact</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Imported</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Claim Status</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50">Invite</th>
-                <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[#141414]/50 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#141414]/5">
-              {filteredCustomers.length > 0 ? (
-                filteredCustomers.map((customer) => (
-                  <tr key={customer.id} className="hover:bg-[#E4E3E0]/20 transition-colors group cursor-pointer" onClick={() => openProfile(customer)}>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#6b8e6b]/10 text-[#6b8e6b] flex items-center justify-center font-bold">
-                          {customer.name?.charAt(0) || 'U'}
-                        </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[1.2fr,0.9fr] gap-6">
+        <div className="cw-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-[rgba(236,233,223,0.58)] border-b border-[color:var(--cw-line)]">
+                  <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Customer</th>
+                  <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Contact</th>
+                  <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Service</th>
+                  <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Claim Status</th>
+                  <th className="px-6 py-4 text-xs font-mono uppercase tracking-wider text-[color:var(--cw-ink-soft)]">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[rgba(45,45,32,0.06)]">
+                {filteredCustomers.length > 0 ? (
+                  filteredCustomers.map((customer) => (
+                    <tr key={customer.id} className="hover:bg-[rgba(236,233,223,0.32)] transition-colors cursor-pointer" onClick={() => openProfile(customer)}>
+                      <td className="px-6 py-4">
                         <div>
-                          <p className="font-medium text-[#141414]">{customer.name || 'Unnamed User'}</p>
-                          <p className="text-xs text-[#141414]/50 font-mono">{customer.id.substring(0, 8)}...</p>
+                          <p className="font-medium text-[var(--cw-ink)]">{customer.displayName}</p>
+                          <p className="text-xs uppercase tracking-[0.24em] text-[var(--cw-accent)] font-semibold mt-2">{customer.sourceLabel}</p>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1 text-sm text-[#141414]/70">
-                        <div className="flex items-center gap-2">
-                          <Mail size={14} className="text-[#141414]/40" />
-                          {customer.email || 'No email'}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Phone size={14} className="text-[#141414]/40" />
-                          {customer.phone || 'No phone'}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#141414]/70">
-                      <p>{customer.imported ? 'Legacy import' : 'App-created'}</p>
-                      <p className="text-xs text-[#141414]/50">{customer.importSource || 'direct'} {customer.importBatchId ? `• ${customer.importBatchId.slice(0, 8)}` : ''}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusStyles[customer.claimStatus || 'not_invited']}`}>
-                        {customer.claimStatus || 'not_invited'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#141414]/70">
-                      {customer.latestInviteSentAt ? (
-                        <>
-                          <p>{format(new Date(customer.latestInviteSentAt), 'MMM d, yyyy')}</p>
-                          <p className="text-xs text-[#141414]/50">Expires {customer.latestInviteExpiresAt ? format(new Date(customer.latestInviteExpiresAt), 'MMM d') : 'n/a'}</p>
-                        </>
-                      ) : (
-                        <span className="text-[#141414]/40">No invite</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        {canSendInvite(customer) && (
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setSelectedCustomer(customer);
-                              void handleResendInvite(customer);
-                            }}
-                            className="text-[#6b8e6b] hover:text-[#5a7a5a] font-medium text-xs px-2 py-1 rounded border border-[#6b8e6b]/30 hover:bg-[#6b8e6b]/10 transition-colors"
-                          >
-                            Invite
-                          </button>
-                        )}
-                        <button className="p-2 text-[#141414]/40 hover:text-[#141414] hover:bg-[#141414]/5 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
-                          <Edit size={18} />
-                        </button>
-                      </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-[color:var(--cw-ink-soft)]">{customer.email || 'No email'}</p>
+                        <p className="text-xs text-[color:var(--cw-ink-soft)] mt-1">{customer.phone || 'No phone'}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-[color:var(--cw-ink-soft)]">{customer.address || 'No address'}</p>
+                        <p className="text-xs text-[color:var(--cw-ink-soft)] mt-1">
+                          {customer.collectionDay || 'Unscheduled'} • {customer.plan || 'No plan'}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[customer.claimStatus || 'not_invited'] || 'bg-slate-100 text-slate-700'}`}>
+                          {customer.claimStatus || 'not_invited'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-[var(--cw-ink)]">${customer.outstandingBalance.toFixed(2)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 cw-empty font-mono">
+                      No customers found.
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-[#141414]/50 font-mono">
-                    No customers found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
 
-      {selectedCustomer && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-end z-50">
-          <div className="bg-[#E4E3E0] w-full max-w-xl h-full shadow-2xl flex flex-col">
-            <div className="p-6 border-b border-[#141414]/10 flex justify-between items-center bg-white">
+        <div className="cw-card p-6">
+          {selectedCustomer ? (
+            <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-serif italic text-[#141414]">Customer Profile</h2>
-                <p className="text-xs text-[#141414]/50 mt-1">Claim status: {selectedCustomer.claimStatus || 'not_invited'}</p>
-              </div>
-              <button onClick={() => { setSelectedCustomer(null); setIsEditing(false); }} className="p-2 hover:bg-[#141414]/5 rounded-full">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-6 flex-1 overflow-y-auto space-y-6">
-              {actionMessage && <div className="p-3 rounded-xl bg-white border border-[#141414]/10 text-sm text-[#141414]/70">{actionMessage}</div>}
-
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10 text-center">
-                <div className="w-20 h-20 mx-auto rounded-full bg-[#6b8e6b]/10 text-[#6b8e6b] flex items-center justify-center font-bold text-2xl mb-4">
-                  {selectedCustomer.name?.charAt(0) || 'U'}
-                </div>
-
-                {isEditing ? (
-                  <div className="space-y-3 text-left mt-4">
-                    <input value={editData.name} onChange={(event) => setEditData({ ...editData, name: event.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                    <input value={editData.phone} onChange={(event) => setEditData({ ...editData, phone: event.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                    <textarea value={editData.address} onChange={(event) => setEditData({ ...editData, address: event.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={2} />
-                    <div className="flex gap-2 pt-2">
-                      <button onClick={() => setIsEditing(false)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium">
-                        Cancel
-                      </button>
-                      <button onClick={handleSaveProfile} className="flex-1 py-2 bg-[#6b8e6b] text-white rounded-lg text-sm font-medium">
-                        Save
-                      </button>
-                    </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-serif italic text-[var(--cw-ink)]">{selectedCustomer.displayName}</h2>
+                    <p className="text-xs uppercase tracking-[0.24em] text-[var(--cw-accent)] font-semibold mt-2">{selectedCustomer.sourceLabel}</p>
                   </div>
-                ) : (
-                  <>
-                    <h3 className="text-xl font-bold text-[#141414]">{selectedCustomer.name || 'Unnamed User'}</h3>
-                    <p className="text-sm text-[#141414]/50 font-mono mt-1">{selectedCustomer.email || 'No email address'}</p>
-                    <div className="mt-4 flex justify-center gap-2">
-                      <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-[#141414]/5 hover:bg-[#141414]/10 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                        <Edit size={14} /> Edit Profile
-                      </button>
-                    </div>
-                  </>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[selectedCustomer.claimStatus || 'not_invited'] || 'bg-slate-100 text-slate-700'}`}>
+                    {selectedCustomer.claimStatus || 'not_invited'}
+                  </span>
+                </div>
+                {actionMessage && <div className="mt-4 cw-alert cw-alert-info">{actionMessage}</div>}
+              </div>
+
+              <div className="space-y-3 text-sm text-[color:var(--cw-ink-soft)]">
+                <div className="flex items-start gap-2">
+                  <Mail size={16} className="mt-0.5 text-[color:var(--cw-ink-soft)]" />
+                  <span>{selectedCustomer.email || 'No email on file'}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Phone size={16} className="mt-0.5 text-[color:var(--cw-ink-soft)]" />
+                  <span>{selectedCustomer.phone || 'No phone on file'}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <MapPin size={16} className="mt-0.5 text-[color:var(--cw-ink-soft)]" />
+                  <span>{selectedCustomer.address || 'No service address on file'}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ShieldAlert size={16} className="mt-0.5 text-[color:var(--cw-ink-soft)]" />
+                  <span>
+                    {selectedCustomer.collectionDay || 'Unscheduled'} collection • {selectedCustomer.plan || 'No plan'} • $
+                    {selectedCustomer.outstandingBalance.toFixed(2)} outstanding
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {canSendInvite(selectedCustomer) && (
+                  <button
+                    onClick={() => void handleResendInvite()}
+                    className="cw-btn cw-btn-primary"
+                  >
+                    Send Invite
+                  </button>
                 )}
-              </div>
-
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10 space-y-4">
-                <h4 className="font-medium text-[#141414] border-b border-[#141414]/10 pb-2">Claim & Import State</h4>
-                <div className="grid grid-cols-2 gap-3 text-sm text-[#141414]/70">
-                  <p><span className="font-medium text-[#141414]">Imported:</span> {selectedCustomer.imported ? 'Yes' : 'No'}</p>
-                  <p><span className="font-medium text-[#141414]">Linked Auth UID:</span> {selectedCustomer.linkedAuthUid ? selectedCustomer.linkedAuthUid.slice(0, 8) : 'None'}</p>
-                  <p><span className="font-medium text-[#141414]">Pending Auth UID:</span> {selectedCustomer.pendingLinkedAuthUid ? selectedCustomer.pendingLinkedAuthUid.slice(0, 8) : 'None'}</p>
-                  <p><span className="font-medium text-[#141414]">Plan:</span> {selectedCustomer.plan || 'None'}</p>
-                  <p><span className="font-medium text-[#141414]">Collection Day:</span> {selectedCustomer.collectionDay || 'None'}</p>
-                  <p><span className="font-medium text-[#141414]">Invite Count:</span> {selectedCustomer.latestInviteResendCount || 0}</p>
-                  <p><span className="font-medium text-[#141414]">Last Invite:</span> {selectedCustomer.latestInviteSentAt ? format(new Date(selectedCustomer.latestInviteSentAt), 'MMM d, yyyy h:mm a') : 'Never'}</p>
-                </div>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {canSendInvite(selectedCustomer) && (
-                    <button onClick={handleResendInvite} className="px-3 py-2 bg-[#6b8e6b] text-white rounded-lg text-sm font-medium">
-                      Resend Invite
-                    </button>
-                  )}
-                  {selectedCustomer.latestInviteId && !selectedCustomer.linkedAuthUid && !selectedCustomer.pendingLinkedAuthUid && (
-                    <button onClick={handleRevokeInvite} className="px-3 py-2 bg-white border border-[#141414]/10 rounded-lg text-sm font-medium">
-                      Revoke Invite
-                    </button>
-                  )}
-                  {(selectedCustomer.claimStatus === 'needs_review' || selectedCustomer.claimStatus === 'conflict' || selectedCustomer.claimStatus === 'missing_email') && (
-                    <button onClick={handleResolveStandalone} className="px-3 py-2 bg-white border border-[#141414]/10 rounded-lg text-sm font-medium flex items-center gap-2">
-                      <ShieldAlert size={14} /> Use as Standalone Customer
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10 space-y-3">
-                <h4 className="font-medium text-[#141414] border-b border-[#141414]/10 pb-2">Contact Details</h4>
-                <div className="flex items-center gap-3 text-sm text-[#141414]/70">
-                  <Phone size={16} className="text-[#141414]/40" /> {selectedCustomer.phone || 'N/A'}
-                </div>
-                <div className="flex items-center gap-3 text-sm text-[#141414]/70">
-                  <MapPin size={16} className="text-[#141414]/40" /> {selectedCustomer.address || 'N/A'}
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10 space-y-4">
-                <h4 className="font-medium text-[#141414] border-b border-[#141414]/10 pb-2 flex items-center gap-2">
-                  <UserRoundCheck size={16} /> Resolve Matching / Conflict
-                </h4>
-                <p className="text-sm text-[#141414]/60">
-                  Use this when the import pipeline flagged a duplicate or needs-review record and support wants to merge it into an existing operational profile.
-                </p>
-                {selectedCustomer.claimStatus === 'pending_verification' && (
-                  <p className="text-sm text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
-                    This customer already has an account reserved and is waiting on email verification. Invite and merge actions stay disabled until that completes.
-                  </p>
+                {selectedCustomer.claimStatus === 'invited' && (
+                  <button
+                    onClick={() => void handleRevokeInvite()}
+                    className="cw-btn cw-btn-secondary"
+                  >
+                    Revoke Invite
+                  </button>
                 )}
-                <select
-                  value={targetCustomerId}
-                  onChange={(event) => setTargetCustomerId(event.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  disabled={selectedCustomer.claimStatus === 'pending_verification'}
-                >
-                  <option value="">Select an existing customer</option>
-                  {candidateCustomers.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name || candidate.email} • {candidate.email || 'No email'}
-                    </option>
-                  ))}
-                </select>
+                {selectedCustomer.claimStatus === 'needs_review' && (
+                  <button
+                    onClick={() => void handleResolveStandalone()}
+                    className="cw-btn cw-btn-secondary"
+                  >
+                    Return to Standalone
+                  </button>
+                )}
                 <button
-                  onClick={handleMergeIntoTarget}
-                  disabled={!targetCustomerId || selectedCustomer.claimStatus === 'pending_verification'}
-                  className="w-full py-2 bg-[#141414] text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                  onClick={() => setIsEditing((current) => !current)}
+                  className="cw-btn cw-btn-secondary"
                 >
-                  Merge Into Selected Customer
+                  {isEditing ? 'Close Editor' : 'Edit Legacy Profile'}
                 </button>
               </div>
 
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-[#141414]/10">
-                <h4 className="font-medium text-[#141414] border-b border-[#141414]/10 pb-2 mb-4">Add Interaction Note</h4>
-                <form onSubmit={handleAddNote} className="space-y-3">
-                  <textarea
-                    value={noteContent}
-                    onChange={(event) => setNoteContent(event.target.value)}
-                    placeholder="Log a call, email, or internal note..."
-                    className="w-full border border-[#141414]/20 rounded-lg p-3 text-sm min-h-[100px]"
-                    required
+              {isEditing && (
+                <div className="space-y-3 border-t border-[color:var(--cw-line)] pt-5">
+                  <input
+                    value={editData.name}
+                    onChange={(event) => setEditData((current) => ({ ...current, name: event.target.value }))}
+                    className="cw-input"
+                    placeholder="Customer name"
                   />
-                  <button type="submit" className="w-full py-2 bg-[#6b8e6b] text-[#141414] rounded-lg font-medium">
-                    Save Note
+                  <input
+                    value={editData.phone}
+                    onChange={(event) => setEditData((current) => ({ ...current, phone: event.target.value }))}
+                    className="cw-input"
+                    placeholder="Phone number"
+                  />
+                  <textarea
+                    value={editData.address}
+                    onChange={(event) => setEditData((current) => ({ ...current, address: event.target.value }))}
+                    className="cw-textarea"
+                    rows={3}
+                    placeholder="Service address"
+                  />
+                  <button
+                    onClick={() => void handleSaveProfile()}
+                    className="cw-btn cw-btn-primary w-full"
+                  >
+                    Save Profile
                   </button>
-                </form>
-              </div>
+                </div>
+              )}
+
+              {canMergeCustomer(selectedCustomer) && candidateCustomers.length > 0 && (
+                <div className="space-y-3 border-t border-[color:var(--cw-line)] pt-5">
+                  <div className="flex items-center gap-2">
+                    <UserRoundCheck size={16} className="text-[var(--cw-accent)]" />
+                    <p className="text-sm font-medium text-[var(--cw-ink)]">Resolve possible duplicates</p>
+                  </div>
+                  <select
+                    value={targetCustomerId}
+                    onChange={(event) => setTargetCustomerId(event.target.value)}
+                    className="cw-select"
+                  >
+                    <option value="">Select merge target</option>
+                    {candidateCustomers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.displayName} • {customer.email || customer.address}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => void handleMergeIntoTarget()}
+                    disabled={!targetCustomerId}
+                    className="cw-btn cw-btn-secondary w-full disabled:opacity-50"
+                  >
+                    Merge Into Selected Profile
+                  </button>
+                </div>
+              )}
+
+              <form onSubmit={handleAddNote} className="space-y-3 border-t border-[color:var(--cw-line)] pt-5">
+                <p className="text-sm font-medium text-[var(--cw-ink)]">Internal note</p>
+                <textarea
+                  value={noteContent}
+                  onChange={(event) => setNoteContent(event.target.value)}
+                  className="cw-textarea"
+                  rows={4}
+                  placeholder="Add a support note..."
+                />
+                <button className="cw-btn cw-btn-primary w-full">Save Note</button>
+              </form>
             </div>
-          </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-center cw-empty font-mono">
+              Select a customer to view unified profile details.
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

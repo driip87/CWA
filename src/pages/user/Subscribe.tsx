@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { db } from '../../lib/firebase';
-import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { useSearchParams } from 'react-router-dom';
 import { Check } from 'lucide-react';
+import { apiAuthedPost } from '../../lib/api';
+import { SUBSCRIPTION_PLANS } from '../../shared/billing';
 
 export default function Subscribe() {
-  const { user, userData } = useAuth();
+  const { user, userData, refreshSession } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [processingSuccess, setProcessingSuccess] = useState(false);
@@ -14,71 +14,37 @@ export default function Subscribe() {
   useEffect(() => {
     const handleSuccess = async () => {
       const success = searchParams.get('subscription_success');
-      const planName = searchParams.get('plan') || 'Monthly Subscription';
-      const amount = Number(searchParams.get('amount')) || 0;
+      const sessionId = searchParams.get('session_id');
 
-      if (success === 'true' && user && userData && !processingSuccess) {
+      if (success === 'true' && sessionId && user && userData && !processingSuccess) {
         setProcessingSuccess(true);
         try {
-          // Update user status
-          await updateDoc(doc(db, 'users', userData.id), { subscriptionStatus: 'active' });
-          
-          // Record the payment in the payments collection
-          if (amount > 0) {
-            await addDoc(collection(db, 'payments'), {
-              userId: userData.id,
-              amount: amount,
-              status: 'paid',
-              date: new Date().toISOString(),
-              description: `${planName} Subscription`
-            });
-          }
-
-          // Schedule first pickup
-          const nextPickupDate = new Date();
-          nextPickupDate.setDate(nextPickupDate.getDate() + 3);
-          
-          await addDoc(collection(db, 'pickups'), {
-            userId: userData.id,
-            date: nextPickupDate.toISOString(),
-            status: 'scheduled',
-            binLocation: 'Curbside',
-            createdAt: new Date().toISOString(),
-          });
+          await apiAuthedPost('/api/user/subscription/confirm', { sessionId });
+          await refreshSession();
 
           const nextParams = new URLSearchParams(searchParams);
           nextParams.delete('subscription_success');
           nextParams.delete('session_id');
           setSearchParams(nextParams, { replace: true });
         } catch (error) {
-          console.error("Error activating subscription:", error);
-          alert("There was an issue activating your account. Please contact support.");
+          console.error('Error activating subscription:', error);
+          alert('There was an issue activating your subscription. Please contact support.');
+          setProcessingSuccess(false);
         }
       }
     };
     handleSuccess();
-  }, [processingSuccess, searchParams, setSearchParams, user, userData]);
+  }, [processingSuccess, refreshSession, searchParams, setSearchParams, user, userData]);
 
-  const handleSubscribe = async (planName: string, amount: number) => {
+  const handleSubscribe = async (planId: string) => {
     if (!user || !userData) return;
     setLoading(true);
     try {
-      const response = await fetch('/api/create-subscription-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          planName,
-          amount,
-          userId: userData.id,
-          returnUrl: window.location.origin + `/subscribe?plan=${encodeURIComponent(planName)}&amount=${amount}`
-        }),
-      });
-
-      const data = await response.json();
+      const data = await apiAuthedPost<{ url: string }>('/api/create-subscription-session', { planId });
       if (data.url) {
         window.location.href = data.url;
       } else {
-        throw new Error(data.error);
+        throw new Error('Failed to create subscription checkout session');
       }
     } catch (error) {
       console.error('Subscription error:', error);
@@ -89,70 +55,69 @@ export default function Subscribe() {
 
   if (processingSuccess) {
     return (
-      <div className="min-h-screen bg-[#f5f5f5] flex items-center justify-center">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.78),transparent_32%),linear-gradient(180deg,#f8f7f2_0%,#f0ede3_100%)] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-[#6b8e6b] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <h2 className="text-xl font-bold text-gray-900">Activating your account...</h2>
-          <p className="text-gray-500 mt-2">Setting up your collection schedule.</p>
+          <div className="w-16 h-16 border-4 border-[var(--cw-accent)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-bold text-[var(--cw-ink)]">Activating your account...</h2>
+          <p className="text-[color:var(--cw-ink-soft)] mt-2">Setting up your collection schedule.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center relative">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.78),transparent_32%),linear-gradient(180deg,#f8f7f2_0%,#f0ede3_100%)] py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center relative">
       <div className="max-w-7xl mx-auto w-full">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Choose Your Collection Plan</h1>
-          <p className="text-xl text-gray-600">Select a subscription plan to activate your waste collection service.</p>
+          <p className="cw-kicker mb-4">Plans</p>
+          <h1 className="text-4xl font-serif font-bold italic text-[var(--cw-ink)] mb-4">Choose Your Collection Plan</h1>
+          <p className="text-xl text-[color:var(--cw-ink-soft)]">Select a subscription plan to activate your waste collection service.</p>
         </div>
         
         <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto items-center">
-          {/* Plan 1 */}
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-8 flex flex-col h-full">
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">Standard Residential</h3>
-            <div className="flex items-baseline gap-2 mb-6">
-              <span className="text-4xl font-extrabold text-gray-900">$35</span>
-              <span className="text-gray-500">/month</span>
-            </div>
-            <ul className="space-y-4 mb-8 flex-1">
-              <li className="flex items-center gap-3 text-gray-700"><Check className="text-[#6b8e6b]" size={20}/> Weekly Curbside Pickup</li>
-              <li className="flex items-center gap-3 text-gray-700"><Check className="text-[#6b8e6b]" size={20}/> 1x 96-Gallon Trash Bin</li>
-              <li className="flex items-center gap-3 text-gray-700"><Check className="text-[#6b8e6b]" size={20}/> 1x 64-Gallon Recycle Bin</li>
-            </ul>
-            <button 
-              onClick={() => handleSubscribe('Standard Residential', 35)} 
-              disabled={loading} 
-              className="w-full py-4 bg-[#141414] text-white rounded-xl font-bold hover:bg-[#141414]/80 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Processing...' : 'Subscribe Now'}
-            </button>
-          </div>
-
-          {/* Plan 2 */}
-          <div className="bg-[#6b8e6b] rounded-3xl shadow-xl border border-[#5a7a5a] p-8 flex flex-col relative transform md:-translate-y-4 h-[105%]">
-            <div className="absolute top-0 right-8 transform -translate-y-1/2">
-              <span className="bg-[#141414] text-white text-xs font-bold uppercase tracking-wider py-1 px-3 rounded-full">Most Popular</span>
-            </div>
-            <h3 className="text-2xl font-bold text-white mb-2">Premium Household</h3>
-            <div className="flex items-baseline gap-2 mb-6">
-              <span className="text-4xl font-extrabold text-white">$55</span>
-              <span className="text-white/80">/month</span>
-            </div>
-            <ul className="space-y-4 mb-8 flex-1">
-              <li className="flex items-center gap-3 text-white"><Check className="text-white" size={20}/> Weekly Curbside Pickup</li>
-              <li className="flex items-center gap-3 text-white"><Check className="text-white" size={20}/> 2x 96-Gallon Trash Bins</li>
-              <li className="flex items-center gap-3 text-white"><Check className="text-white" size={20}/> 2x 64-Gallon Recycle Bins</li>
-              <li className="flex items-center gap-3 text-white"><Check className="text-white" size={20}/> Priority Customer Support</li>
-            </ul>
-            <button 
-              onClick={() => handleSubscribe('Premium Household', 55)} 
-              disabled={loading} 
-              className="w-full py-4 bg-white text-[#6b8e6b] rounded-xl font-bold hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Processing...' : 'Subscribe Now'}
-            </button>
-          </div>
+          {SUBSCRIPTION_PLANS.map((plan, index) => {
+            const featured = index === 1;
+            return (
+              <div
+                key={plan.id}
+                className={
+                  featured
+                    ? 'cw-card-dark p-8 flex flex-col relative transform md:-translate-y-4 h-[105%]'
+                    : 'cw-card p-8 flex flex-col h-full'
+                }
+              >
+                {featured && (
+                  <div className="absolute top-0 right-8 transform -translate-y-1/2">
+                    <span className="cw-badge bg-[var(--cw-bg)] text-[var(--cw-primary)]">Most Popular</span>
+                  </div>
+                )}
+                <h3 className={`text-2xl font-serif font-bold italic mb-2 ${featured ? 'text-white' : 'text-[var(--cw-ink)]'}`}>{plan.name}</h3>
+                <div className="flex items-baseline gap-2 mb-6">
+                  <span className={`text-4xl font-extrabold ${featured ? 'text-white' : 'text-[var(--cw-ink)]'}`}>${plan.amount}</span>
+                  <span className={featured ? 'text-white/80' : 'text-[color:var(--cw-ink-soft)]'}>/month</span>
+                </div>
+                <ul className="space-y-4 mb-8 flex-1">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className={`flex items-center gap-3 ${featured ? 'text-white' : 'text-[color:var(--cw-ink-soft)]'}`}>
+                      <Check className={featured ? 'text-white' : 'text-[var(--cw-accent)]'} size={20} />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => handleSubscribe(plan.id)}
+                  disabled={loading}
+                  className={
+                    featured
+                      ? 'cw-btn cw-btn-secondary w-full'
+                      : 'cw-btn cw-btn-primary w-full'
+                  }
+                >
+                  {loading ? 'Processing...' : 'Subscribe Now'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ export type RecordStatus = 'active' | 'archived';
 
 export interface CustomerProfile {
   id?: string;
+  tenantId?: string;
   email?: string;
   name?: string;
   role?: 'user' | 'admin';
@@ -37,6 +38,22 @@ export interface CustomerProfile {
   latestInviteSentAt?: string | null;
   latestInviteExpiresAt?: string | null;
   latestInviteResendCount?: number;
+  billingProvider?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripeSubscriptionStatus?: string | null;
+  stripeCheckoutSessionId?: string | null;
+  stripePriceId?: string | null;
+  subscriptionPlanName?: string | null;
+  subscriptionAmount?: number | null;
+  subscriptionCurrency?: string | null;
+  subscriptionInterval?: string | null;
+  subscriptionCurrentPeriodStart?: string | null;
+  subscriptionCurrentPeriodEnd?: string | null;
+  subscriptionCancelAtPeriodEnd?: boolean;
+  subscriptionCanceledAt?: string | null;
+  subscriptionActivatedAt?: string | null;
+  subscriptionUpdatedAt?: string | null;
 }
 
 export interface ImportedCustomerInput {

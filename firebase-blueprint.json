@@ -116,7 +116,16 @@
         "amount": { "type": "number" },
         "category": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
-        "description": { "type": "string" }
+        "description": { "type": "string" },
+        "tenantId": { "type": "string", "description": "Owning tenant ID when the expense is tenant-scoped." },
+        "tenantAssignment": { "type": "string", "enum": ["inferred", "unassigned"] },
+        "tenantAssignmentReason": { "type": "string", "description": "Reason the tenant was inferred or why the record needs manual review." },
+        "tenantAssignmentSignals": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Audit trail of ownership signals used during tenant backfill."
+        },
+        "tenantBackfilledAt": { "type": "string", "format": "date-time" }
       },
       "required": ["amount", "category", "date"]
     },
