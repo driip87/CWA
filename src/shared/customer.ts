@@ -54,6 +54,15 @@ export interface CustomerProfile {
   subscriptionCanceledAt?: string | null;
   subscriptionActivatedAt?: string | null;
   subscriptionUpdatedAt?: string | null;
+  sourceSystem?: string | null;
+  externalAccountId?: string | null;
+  routeId?: string | null;
+  stopSequence?: number | null;
+  serviceDays?: string[];
+  serviceType?: string | null;
+  sourceFingerprint?: string | null;
+  lastMigrationJobId?: string | null;
+  lastMigrationAppliedAt?: string | null;
 }
 
 export interface ImportedCustomerInput {
